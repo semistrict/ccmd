@@ -43,6 +43,7 @@ type SessionInfo struct {
 	Project   string
 	Timestamp time.Time
 	Preview   string
+	Turns     int
 }
 
 // ConversationEntry represents a single turn in the conversation.

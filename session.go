@@ -110,7 +110,7 @@ func findSessions(limit int, projectFilter string) []SessionInfo {
 
 	var sessions []SessionInfo
 	for _, c := range candidates {
-		info := scanSessionInfo(c.path, c.projectDir)
+		info := scanSessionInfo(c.path, c.projectDir, c.modTime)
 		if info != nil {
 			sessions = append(sessions, *info)
 		}
@@ -118,7 +118,7 @@ func findSessions(limit int, projectFilter string) []SessionInfo {
 	return sessions
 }
 
-func scanSessionInfo(path, projectDir string) *SessionInfo {
+func scanSessionInfo(path, projectDir string, modTime time.Time) *SessionInfo {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil
@@ -129,8 +129,11 @@ func scanSessionInfo(path, projectDir string) *SessionInfo {
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
 
-	var ts time.Time
 	var preview string
+	found := false
+	turns := 0
+	seenMsgID := make(map[string]bool)
+	lastRole := ""
 
 	for scanner.Scan() {
 		var rec Record
@@ -140,29 +143,49 @@ func scanSessionInfo(path, projectDir string) *SessionInfo {
 		if rec.Type == "file-history-snapshot" || rec.Type == "progress" {
 			continue
 		}
-		if rec.Timestamp != "" && ts.IsZero() {
-			ts, _ = time.Parse(time.RFC3339Nano, rec.Timestamp)
+		if rec.IsSidechain {
+			continue
 		}
-		if rec.Type == "user" && rec.Message != nil && preview == "" {
-			text, _ := parseContent(rec.Message.Content)
-			if text != "" {
-				preview = text
-				if len(preview) > 100 {
-					preview = preview[:100] + "..."
+		if !found && rec.Timestamp != "" {
+			found = true
+		}
+		if rec.Message != nil {
+			switch rec.Type {
+			case "user":
+				text, _ := parseContent(rec.Message.Content)
+				if text != "" {
+					if lastRole != "user" {
+						turns++
+						lastRole = "user"
+					}
+					if preview == "" {
+						preview = text
+						if len(preview) > 100 {
+							preview = preview[:100] + "..."
+						}
+					}
 				}
-				break
+			case "assistant":
+				if rec.Message.ID != "" && !seenMsgID[rec.Message.ID] {
+					seenMsgID[rec.Message.ID] = true
+					if lastRole != "assistant" {
+						turns++
+						lastRole = "assistant"
+					}
+				}
 			}
 		}
 	}
 
-	if ts.IsZero() {
+	if !found {
 		return nil
 	}
 	return &SessionInfo{
 		Path:      path,
 		Project:   project,
-		Timestamp: ts,
+		Timestamp: modTime,
 		Preview:   preview,
+		Turns:     turns,
 	}
 }
 

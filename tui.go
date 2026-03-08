@@ -532,21 +532,26 @@ func (m tuiModel) renderRow(i int) string {
 
 	idx := fmt.Sprintf("%2d", i+1)
 	when := fmt.Sprintf("%-10s", relativeTime(s.Timestamp))
+	turns := fmt.Sprintf("%3dt", s.Turns)
 	preview := strings.ReplaceAll(s.Preview, "\n", " ")
 	for strings.Contains(preview, "  ") {
 		preview = strings.ReplaceAll(preview, "  ", " ")
 	}
+
+	// Column widths: cursor(2) + idx(2) + 2 + when(10) + 2 + turns(4) + 2 + [proj(16) + 2] + preview
+	const fixedWith = 2 + 2 + 2 + 10 + 2 + 4 + 2    // 24
+	const fixedWithProj = fixedWith + 16 + 2           // 42
 
 	if selected {
 		cur := "▸ "
 		var row string
 		if m.showProject {
 			proj := fmt.Sprintf("%-16s", truncate(s.Project, 16))
-			pw := max(m.width-36, 10)
-			row = fmt.Sprintf("%s%s  %s  %s  %s", cur, idx, when, proj, truncate(preview, pw))
+			pw := max(m.width-fixedWithProj, 10)
+			row = fmt.Sprintf("%s%s  %s  %s  %s  %s", cur, idx, when, turns, proj, truncate(preview, pw))
 		} else {
-			pw := max(m.width-18, 10)
-			row = fmt.Sprintf("%s%s  %s  %s", cur, idx, when, truncate(preview, pw))
+			pw := max(m.width-fixedWith, 10)
+			row = fmt.Sprintf("%s%s  %s  %s  %s", cur, idx, when, turns, truncate(preview, pw))
 		}
 		for len(row) < m.width {
 			row += " "
@@ -556,16 +561,17 @@ func (m tuiModel) renderRow(i int) string {
 
 	idxStr := stDim.Render(idx)
 	whenStr := stTime.Render(when)
+	turnsStr := stDim.Render(turns)
 
 	if m.showProject {
 		proj := truncate(s.Project, 16)
 		projStr := stProject.Render(fmt.Sprintf("%-16s", proj))
-		pw := max(m.width-36, 10)
-		return "  " + idxStr + "  " + whenStr + "  " + projStr + "  " + truncate(preview, pw)
+		pw := max(m.width-fixedWithProj, 10)
+		return "  " + idxStr + "  " + whenStr + "  " + turnsStr + "  " + projStr + "  " + truncate(preview, pw)
 	}
 
-	pw := max(m.width-18, 10)
-	return "  " + idxStr + "  " + whenStr + "  " + truncate(preview, pw)
+	pw := max(m.width-fixedWith, 10)
+	return "  " + idxStr + "  " + whenStr + "  " + turnsStr + "  " + truncate(preview, pw)
 }
 
 func (m tuiModel) renderSummaryLine(sl summaryLine) string {
