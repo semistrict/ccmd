@@ -155,8 +155,15 @@ func extractUUID(transcriptPath string) string {
 }
 
 func fastcompactPrompt(ccmdBin, uuid, transcriptPath string) string {
+	cmd := ccmdBin + " " + uuid
 	return "This session is being continued from a previous conversation that ran out of context. " +
-		"To get the full conversation history, run: " + ccmdBin + " " + uuid + "\n\n" +
+		"To get the full conversation history, run: " + cmd + "\n\n" +
+		"Useful flags:\n" +
+		"  " + cmd + " -s           # one-line summary per turn (good for getting an overview first)\n" +
+		"  " + cmd + " -from N      # start from turn N (inclusive)\n" +
+		"  " + cmd + " -to N        # end at turn N (inclusive)\n" +
+		"  " + cmd + " -from N -to M # read a specific range of turns\n" +
+		"  " + cmd + " -no-thinking # hide thinking blocks\n\n" +
 		"Read the output to understand what was being worked on, then continue the conversation from where it left off without asking the user any further questions. " +
 		"Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with \"I'll continue\" or similar. " +
 		"Pick up the last task as if the break never happened."
