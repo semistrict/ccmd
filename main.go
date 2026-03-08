@@ -19,9 +19,6 @@ func main() {
 		case "precompact":
 			precompact()
 			return
-		case "install-hooks":
-			installHooks()
-			return
 		}
 	}
 
@@ -34,7 +31,11 @@ func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: ccmd [flags] [session-file-or-number-or-uuid]\n\n")
 		fmt.Fprintf(os.Stderr, "Parse Claude Code JSONL session files into Markdown.\n\n")
-		fmt.Fprintf(os.Stderr, "  No arguments    interactive session browser (plain list if piped)\n")
+		fmt.Fprintf(os.Stderr, "Commands:\n")
+		fmt.Fprintf(os.Stderr, "  ccmd claude ...  launch claude with fastcompact support\n")
+		fmt.Fprintf(os.Stderr, "  ccmd fastcompact render & restart the most recent session\n\n")
+		fmt.Fprintf(os.Stderr, "Session browser:\n")
+		fmt.Fprintf(os.Stderr, "  No arguments     interactive session browser (plain list if piped)\n")
 		fmt.Fprintf(os.Stderr, "  <number>         render the Nth most recent session\n")
 		fmt.Fprintf(os.Stderr, "  <uuid>           render the session with that UUID\n")
 		fmt.Fprintf(os.Stderr, "  <path>           render the session at that path\n\n")

@@ -68,7 +68,7 @@ ccmd claude -c          # continue most recent session
 ccmd claude <any args>  # all args passed through to claude
 ```
 
-Runs Claude Code as a child process. This enables the fastcompact hooks -- when a hook fires, it signals the parent `ccmd` process which handles the restart cleanly (no terminal corruption).
+Runs Claude Code as a child process with fastcompact hooks automatically injected via `--settings`. No manual hook installation needed -- when a hook fires, it signals the parent `ccmd` process which handles the restart cleanly (no terminal corruption).
 
 ### Fastcompact
 
@@ -82,14 +82,6 @@ ccmd fastcompact <uuid>       # specific session
 Can also be triggered interactively:
 - Type `fastcompact` as a prompt in Claude Code (when running under `ccmd claude`)
 - When Claude Code hits its context limit, a confirmation dialog appears
-
-### Install hooks
-
-```
-ccmd install-hooks
-```
-
-Adds `PreCompact` and `UserPromptSubmit` hooks to `~/.claude/settings.json`. Idempotent -- safe to run multiple times.
 
 ## How fastcompact works
 

@@ -20,8 +20,9 @@ func runClaude(args []string) {
 		os.Exit(1)
 	}
 
-	// Always run with --dangerously-skip-permissions
-	args = append([]string{"--dangerously-skip-permissions"}, args...)
+	// Inject hooks and permissions for this invocation
+	hooksJSON := `{"hooks":{"PreCompact":[{"hooks":[{"type":"command","command":"ccmd precompact"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"ccmd precompact"}]}]}}`
+	args = append([]string{"--dangerously-skip-permissions", "--settings", hooksJSON}, args...)
 
 	// Set CCMD_PID so hooks can signal us back
 	os.Setenv("CCMD_PID", strconv.Itoa(os.Getpid()))
@@ -227,102 +228,3 @@ func precompact() {
 	syscall.Kill(ccmdPid, syscall.SIGUSR1)
 }
 
-func installHooks() {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	settingsPath := filepath.Join(home, ".claude", "settings.json")
-
-	settings := make(map[string]interface{})
-	data, err := os.ReadFile(settingsPath)
-	if err == nil {
-		if err := json.Unmarshal(data, &settings); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s is not valid JSON: %v\n", settingsPath, err)
-			os.Exit(1)
-		}
-	} else if !os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
-	hooks, _ := settings["hooks"].(map[string]interface{})
-	if hooks == nil {
-		hooks = make(map[string]interface{})
-	}
-
-	ccmdHook := map[string]interface{}{
-		"type":    "command",
-		"command": "ccmd precompact",
-	}
-	hookEntry := []interface{}{
-		map[string]interface{}{
-			"hooks": []interface{}{ccmdHook},
-		},
-	}
-
-	changed := false
-	for _, event := range []string{"PreCompact", "UserPromptSubmit"} {
-		if hasHook(hooks[event], "ccmd precompact") {
-			fmt.Printf("  %s: already installed\n", event)
-			continue
-		}
-		existing, _ := hooks[event].([]interface{})
-		if existing == nil {
-			hooks[event] = hookEntry
-		} else {
-			hooks[event] = append(existing, hookEntry[0])
-		}
-		fmt.Printf("  %s: installed\n", event)
-		changed = true
-	}
-
-	if !changed {
-		fmt.Println("\nHooks already installed, nothing to do.")
-		return
-	}
-
-	settings["hooks"] = hooks
-
-	out, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	out = append(out, '\n')
-
-	if err := os.WriteFile(settingsPath, out, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "error writing %s: %v\n", settingsPath, err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("\nWrote %s\n", settingsPath)
-}
-
-func hasHook(eventVal interface{}, command string) bool {
-	entries, ok := eventVal.([]interface{})
-	if !ok {
-		return false
-	}
-	for _, entry := range entries {
-		entryMap, ok := entry.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		hooksList, ok := entryMap["hooks"].([]interface{})
-		if !ok {
-			continue
-		}
-		for _, h := range hooksList {
-			hMap, ok := h.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if cmd, _ := hMap["command"].(string); cmd == command {
-				return true
-			}
-		}
-	}
-	return false
-}
