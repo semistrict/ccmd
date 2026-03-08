@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func claudeProjectsDir() string {
@@ -108,9 +111,19 @@ func findSessions(limit int, projectFilter string) []SessionInfo {
 		candidates = candidates[:limit]
 	}
 
+	results := make([]*SessionInfo, len(candidates))
+	g := new(errgroup.Group)
+	g.SetLimit(32)
+	for i, c := range candidates {
+		g.Go(func() error {
+			results[i] = scanSessionInfo(c.path, c.projectDir, c.modTime)
+			return nil
+		})
+	}
+	g.Wait()
+
 	var sessions []SessionInfo
-	for _, c := range candidates {
-		info := scanSessionInfo(c.path, c.projectDir, c.modTime)
+	for _, info := range results {
 		if info != nil {
 			sessions = append(sessions, *info)
 		}
@@ -132,45 +145,40 @@ func scanSessionInfo(path, projectDir string, modTime time.Time) *SessionInfo {
 	var preview string
 	found := false
 	turns := 0
-	seenMsgID := make(map[string]bool)
 	lastRole := ""
 
 	for scanner.Scan() {
-		var rec Record
-		if err := json.Unmarshal(scanner.Bytes(), &rec); err != nil {
+		line := scanner.Bytes()
+
+		// Fast string checks — avoid JSON parsing for turn counting
+		if bytes.Contains(line, []byte(`"isSidechain":true`)) {
 			continue
 		}
-		if rec.Type == "file-history-snapshot" || rec.Type == "progress" {
-			continue
-		}
-		if rec.IsSidechain {
-			continue
-		}
-		if !found && rec.Timestamp != "" {
+
+		isUser := bytes.Contains(line, []byte(`"type":"user"`))
+		isAsst := bytes.Contains(line, []byte(`"type":"assistant"`))
+
+		if !found && (isUser || isAsst) {
 			found = true
 		}
-		if rec.Message != nil {
-			switch rec.Type {
-			case "user":
+
+		if isUser && lastRole != "user" {
+			turns++
+			lastRole = "user"
+		} else if isAsst && lastRole != "assistant" {
+			turns++
+			lastRole = "assistant"
+		}
+
+		// Only JSON-parse to extract preview from first user message
+		if isUser && preview == "" {
+			var rec Record
+			if json.Unmarshal(line, &rec) == nil && rec.Message != nil {
 				text, _ := parseContent(rec.Message.Content)
 				if text != "" {
-					if lastRole != "user" {
-						turns++
-						lastRole = "user"
-					}
-					if preview == "" {
-						preview = text
-						if len(preview) > 100 {
-							preview = preview[:100] + "..."
-						}
-					}
-				}
-			case "assistant":
-				if rec.Message.ID != "" && !seenMsgID[rec.Message.ID] {
-					seenMsgID[rec.Message.ID] = true
-					if lastRole != "assistant" {
-						turns++
-						lastRole = "assistant"
+					preview = text
+					if len(preview) > 100 {
+						preview = preview[:100] + "..."
 					}
 				}
 			}

@@ -126,24 +126,7 @@ func fastcompact(args []string) {
 		arg = args[0]
 	}
 
-	f, err := os.Open(arg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	defer f.Close()
-
-	records := parseRecords(f)
-	entries := buildConversation(records, arg, false)
-
-	var buf strings.Builder
-	writeMarkdown(&buf, records, entries, false, false, 0, 0)
-	md := buf.String()
-
-	const maxSize = 200 * 1024
-	if len(md) > maxSize {
-		md = "...\n[Earlier portion of session truncated — showing last 200KB]\n...\n\n" + md[len(md)-maxSize:]
-	}
+	uuid := extractUUID(arg)
 
 	claudePath, err := exec.LookPath("claude")
 	if err != nil {
@@ -151,7 +134,7 @@ func fastcompact(args []string) {
 		os.Exit(1)
 	}
 
-	prompt := md + "\n\nThis session is being continued from a previous conversation that ran out of context. The summary above covers the earlier portion of the conversation.\n\nIf you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: " + arg + "\nContinue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with \"I'll continue\" or similar. Pick up the last task as if the break never happened."
+	prompt := fastcompactPrompt(os.Args[0], uuid, arg)
 
 	err = syscall.Exec(claudePath, []string{"claude", "--dangerously-skip-permissions", prompt}, os.Environ())
 	if err != nil {
@@ -161,30 +144,22 @@ func fastcompact(args []string) {
 }
 
 func buildFastcompactArgs(transcriptPath string) []string {
-	md := renderSessionToString(transcriptPath)
-
-	if len(md) < 200 {
-		projDir := filepath.Base(filepath.Dir(transcriptPath))
-		if projDir != "" {
-			sessions := findSessions(1, projDir)
-			if len(sessions) > 0 && sessions[0].Path != transcriptPath {
-				fallback := renderSessionToString(sessions[0].Path)
-				if len(fallback) > len(md) {
-					md = fallback
-					transcriptPath = sessions[0].Path
-				}
-			}
-		}
-	}
-
-	const maxSize = 200 * 1024
-	if len(md) > maxSize {
-		md = "...\n[Earlier portion of session truncated — showing last 200KB]\n...\n\n" + md[len(md)-maxSize:]
-	}
-
-	prompt := md + "\n\nThis session is being continued from a previous conversation that ran out of context. The summary above covers the earlier portion of the conversation.\n\nIf you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: " + transcriptPath + "\nContinue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with \"I'll continue\" or similar. Pick up the last task as if the break never happened."
-
+	uuid := extractUUID(transcriptPath)
+	prompt := fastcompactPrompt(os.Args[0], uuid, transcriptPath)
 	return []string{"--dangerously-skip-permissions", prompt}
+}
+
+func extractUUID(transcriptPath string) string {
+	base := filepath.Base(transcriptPath)
+	return strings.TrimSuffix(base, ".jsonl")
+}
+
+func fastcompactPrompt(ccmdBin, uuid, transcriptPath string) string {
+	return "This session is being continued from a previous conversation that ran out of context. " +
+		"To get the full conversation history, run: " + ccmdBin + " " + uuid + "\n\n" +
+		"Read the output to understand what was being worked on, then continue the conversation from where it left off without asking the user any further questions. " +
+		"Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with \"I'll continue\" or similar. " +
+		"Pick up the last task as if the break never happened."
 }
 
 func precompact() {
