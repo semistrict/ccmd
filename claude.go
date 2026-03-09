@@ -21,7 +21,7 @@ func runClaude(args []string) {
 	}
 
 	// Inject hooks and permissions for this invocation
-	hooksJSON := `{"hooks":{"PreCompact":[{"hooks":[{"type":"command","command":"ccmd precompact"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"ccmd precompact"}]}]}}`
+	hooksJSON := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"ccmd precompact"}]}]}}`
 	args = append([]string{"--dangerously-skip-permissions", "--settings", hooksJSON}, args...)
 
 	// Set CCMD_PID so hooks can signal us back
@@ -72,24 +72,17 @@ func runClaude(args []string) {
 				fmt.Fprintf(os.Stderr, "ccmd: failed to read control file: %v\n", err)
 				os.Exit(1)
 			}
-			parts := strings.SplitN(string(pathBytes), "\n", 3)
-			if len(parts) != 3 {
+			parts := strings.SplitN(string(pathBytes), "\n", 2)
+			if len(parts) != 2 {
 				fmt.Fprintf(os.Stderr, "ccmd: invalid control file\n")
 				os.Exit(1)
 			}
-			eventType, sessionID, transcriptPath := parts[0], parts[1], parts[2]
+			sessionID, transcriptPath := parts[0], parts[1]
 
 			// If transcript_path doesn't exist, find it by session ID
 			if _, err := os.Stat(transcriptPath); err != nil && sessionID != "" {
 				if found := findSessionByUUID(sessionID); found != "" {
 					transcriptPath = found
-				}
-			}
-
-			// For PreCompact, ask the user first
-			if eventType == "PreCompact" {
-				if !askFastcompactConfirm() {
-					continue
 				}
 			}
 
@@ -177,10 +170,8 @@ func precompact() {
 	}
 
 	var data struct {
-		HookEventName  string `json:"hook_event_name"`
 		TranscriptPath string `json:"transcript_path"`
 		SessionID      string `json:"session_id"`
-		CWD            string `json:"cwd"`
 		Prompt         string `json:"prompt"`
 	}
 	if err := json.Unmarshal(input, &data); err != nil || data.TranscriptPath == "" {
@@ -197,15 +188,13 @@ func precompact() {
 		os.Exit(0)
 	}
 
-	if data.HookEventName == "UserPromptSubmit" {
-		if strings.TrimSpace(data.Prompt) != "fastcompact" {
-			os.Exit(0)
-		}
-		fmt.Print(`{"decision":"block","reason":"Restarting with fastcompact..."}`)
+	if strings.TrimSpace(data.Prompt) != "fastcompact" {
+		os.Exit(0)
 	}
+	fmt.Print(`{"decision":"block","reason":"Restarting with fastcompact..."}`)
 
 	controlFile := fmt.Sprintf("/tmp/ccmd-%d.path", ccmdPid)
-	os.WriteFile(controlFile, []byte(data.HookEventName+"\n"+data.SessionID+"\n"+data.TranscriptPath), 0644)
+	os.WriteFile(controlFile, []byte(data.SessionID+"\n"+data.TranscriptPath), 0644)
 
 	syscall.Kill(ccmdPid, syscall.SIGUSR1)
 }

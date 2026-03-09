@@ -81,17 +81,13 @@ ccmd fastcompact <uuid>       # specific session
 
 Can also be triggered interactively:
 - Type `fastcompact` as a prompt in Claude Code (when running under `ccmd claude`)
-- When Claude Code hits its context limit, a confirmation dialog appears
 
 ## How fastcompact works
 
-1. The `PreCompact` hook fires when Claude Code is about to compact context
+1. The `UserPromptSubmit` hook intercepts the word `fastcompact` typed as a prompt and blocks it
 2. The hook signals the parent `ccmd claude` process via SIGUSR1
-3. `ccmd` kills the Claude Code child process and shows a confirmation dialog
-4. If confirmed, it renders the full session transcript as Markdown (truncated to last 200KB if needed)
-5. A new Claude Code instance starts with the rendered transcript as its initial prompt
-
-The `UserPromptSubmit` hook intercepts the word `fastcompact` typed as a prompt, blocks it, and triggers the same flow without confirmation.
+3. `ccmd` kills the Claude Code child process
+4. A new Claude Code instance starts with a prompt referencing the previous session's transcript
 
 ## Output format
 
