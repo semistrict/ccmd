@@ -53,6 +53,7 @@ type ImageSource struct {
 type SessionInfo struct {
 	Path      string
 	Project   string
+	CWD       string
 	Timestamp time.Time
 	Preview   string
 	Turns     int

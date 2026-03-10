@@ -143,6 +143,7 @@ func scanSessionInfo(path, projectDir string, modTime time.Time) *SessionInfo {
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
 
 	var preview string
+	var cwd string
 	found := false
 	turns := 0
 	lastRole := ""
@@ -170,10 +171,13 @@ func scanSessionInfo(path, projectDir string, modTime time.Time) *SessionInfo {
 			lastRole = "assistant"
 		}
 
-		// Only JSON-parse to extract preview from first user message
+		// Only JSON-parse to extract preview+cwd from first user message
 		if isUser && preview == "" {
 			var rec Record
 			if json.Unmarshal(line, &rec) == nil && rec.Message != nil {
+				if rec.CWD != "" {
+					cwd = rec.CWD
+				}
 				text, _ := parseContent(rec.Message.Content)
 				if text != "" {
 					preview = text
@@ -191,6 +195,7 @@ func scanSessionInfo(path, projectDir string, modTime time.Time) *SessionInfo {
 	return &SessionInfo{
 		Path:      path,
 		Project:   project,
+		CWD:       cwd,
 		Timestamp: modTime,
 		Preview:   preview,
 		Turns:     turns,

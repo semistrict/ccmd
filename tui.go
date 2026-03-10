@@ -57,6 +57,7 @@ type tuiModel struct {
 	projectOnly   bool   // true when filtering to current project
 	projectFilter string // encoded cwd project dir
 	chosen       string
+	chosenCWD    string
 	chosenAction string // "", "summary", "continue", "fork"
 	copied       bool
 	filtering     bool   // true when typing in the filter input
@@ -211,7 +212,10 @@ func (m *tuiModel) applyFilter() tea.Cmd {
 		var filtered []SessionInfo
 		for _, s := range m.sessions {
 			projDir := filepath.Base(filepath.Dir(s.Path))
-			projPath := strings.ReplaceAll(projDir, "-", "/")
+			projPath := s.CWD
+			if projPath == "" {
+				projPath = strings.ReplaceAll(projDir, "-", "/")
+			}
 			text := strings.ToLower(s.Preview + " " + s.Project + " " + sessionUUID(s.Path) + " " + projDir + " " + projPath)
 			if strings.Contains(text, query) {
 				filtered = append(filtered, s)
@@ -336,23 +340,27 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if len(m.sessions) > 0 {
 				m.chosen = m.sessions[m.cursor].Path
+				m.chosenCWD = m.sessions[m.cursor].CWD
 				return m, tea.Quit
 			}
 		case "s":
 			if len(m.sessions) > 0 {
 				m.chosen = m.sessions[m.cursor].Path
+				m.chosenCWD = m.sessions[m.cursor].CWD
 				m.chosenAction = "summary"
 				return m, tea.Quit
 			}
 		case "c":
 			if len(m.sessions) > 0 {
 				m.chosen = m.sessions[m.cursor].Path
+				m.chosenCWD = m.sessions[m.cursor].CWD
 				m.chosenAction = "continue"
 				return m, tea.Quit
 			}
 		case "f":
 			if len(m.sessions) > 0 {
 				m.chosen = m.sessions[m.cursor].Path
+				m.chosenCWD = m.sessions[m.cursor].CWD
 				m.chosenAction = "fork"
 				return m, tea.Quit
 			}
@@ -621,10 +629,14 @@ func runTUI(n int, showThinking bool, fromTurn, toTurn int) {
 	switch final.chosenAction {
 	case "continue", "fork":
 		// cd to the session's project directory
-		projDir := filepath.Base(filepath.Dir(final.chosen))
-		realDir := strings.ReplaceAll(projDir, "-", "/")
-		if len(projDir) > 0 && projDir[0] == '-' {
-			realDir = "/" + strings.ReplaceAll(projDir[1:], "-", "/")
+		realDir := final.chosenCWD
+		if realDir == "" {
+			// Fallback: reverse-map the project directory name
+			projDir := filepath.Base(filepath.Dir(final.chosen))
+			realDir = strings.ReplaceAll(projDir, "-", "/")
+			if len(projDir) > 0 && projDir[0] == '-' {
+				realDir = "/" + strings.ReplaceAll(projDir[1:], "-", "/")
+			}
 		}
 		if err := os.Chdir(realDir); err != nil {
 			fmt.Fprintf(os.Stderr, "error: cannot cd to %s: %v\n", realDir, err)
