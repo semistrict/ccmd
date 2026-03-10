@@ -41,6 +41,7 @@ func TestSessionUUID(t *testing.T) {
 	}{
 		{"/home/user/.claude/projects/foo/abc-123.jsonl", "abc-123"},
 		{"/tmp/967ff820-53f4-4b2c-af1d-5991b2bc22b4.jsonl", "967ff820-53f4-4b2c-af1d-5991b2bc22b4"},
+		{"/Users/user/.codex/sessions/2026/03/09/rollout-2026-03-09T21-40-03-019cd60b-7fe1-7223-a1c0-6f0edbb837fc.jsonl", "019cd60b-7fe1-7223-a1c0-6f0edbb837fc"},
 	}
 	for _, tt := range tests {
 		got := sessionUUID(tt.input)

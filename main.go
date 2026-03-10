@@ -5,7 +5,55 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
+
+// summaryFlag implements flag.Value for -s, acting as a bool flag that also accepts
+// an optional range: -s, -s=5, -s=5:10, -s=:10, -s=5:
+type summaryFlag struct {
+	enabled bool
+	from    int
+	to      int
+}
+
+func (f *summaryFlag) String() string { return "" }
+
+func (f *summaryFlag) Set(s string) error {
+	if s == "true" || s == "" {
+		f.enabled = true
+		return nil
+	}
+	if s == "false" {
+		f.enabled = false
+		return nil
+	}
+	f.enabled = true
+	if before, after, ok := strings.Cut(s, ":"); ok {
+		if before != "" {
+			n, err := strconv.Atoi(before)
+			if err != nil {
+				return fmt.Errorf("invalid range: %s", s)
+			}
+			f.from = n
+		}
+		if after != "" {
+			n, err := strconv.Atoi(after)
+			if err != nil {
+				return fmt.Errorf("invalid range: %s", s)
+			}
+			f.to = n
+		}
+	} else {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			return fmt.Errorf("invalid range: %s", s)
+		}
+		f.from = n
+	}
+	return nil
+}
+
+func (f *summaryFlag) IsBoolFlag() bool { return true }
 
 func main() {
 	if len(os.Args) >= 2 {
@@ -25,7 +73,8 @@ func main() {
 	outputFile := flag.String("o", "", "write output to file instead of stdout")
 	numSessions := flag.Int("n", 0, "limit number of sessions to list (0 = all)")
 	hideThinking := flag.Bool("no-thinking", false, "hide thinking blocks from output")
-	summary := flag.Bool("s", false, "summary mode: one line per turn")
+	var summary summaryFlag
+	flag.Var(&summary, "s", "summary mode: -s, -s=FROM:TO, -s=FROM:, -s=:TO, -s=N")
 	fromTurn := flag.Int("from", 0, "start turn number (inclusive)")
 	toTurn := flag.Int("to", 0, "end turn number (inclusive)")
 	lastTurns := flag.Int("last", 0, "show only the last N turns")
@@ -46,6 +95,14 @@ func main() {
 	}
 	flag.Parse()
 
+	// -s=FROM:TO overrides -from/-to
+	if summary.from > 0 && *fromTurn == 0 {
+		*fromTurn = summary.from
+	}
+	if summary.to > 0 && *toTurn == 0 {
+		*toTurn = summary.to
+	}
+
 	if flag.NArg() == 0 {
 		if isTerminal() {
 			runTUI(*numSessions, !*hideThinking, *fromTurn, *toTurn)
@@ -59,7 +116,7 @@ func main() {
 
 	// If the argument is a number, look it up from the session list
 	if n, err := strconv.Atoi(arg); err == nil {
-		sessions := findSessions(0, "")
+		sessions := findSessions(0, cwdProjectDir())
 		if n < 1 || n > len(sessions) {
 			fmt.Fprintf(os.Stderr, "error: session %d not found (have %d sessions)\n", n, len(sessions))
 			os.Exit(1)
@@ -74,5 +131,5 @@ func main() {
 		arg = found
 	}
 
-	renderSession(arg, *outputFile, *imagesDir, !*hideThinking, *summary, *fromTurn, *toTurn, *lastTurns)
+	renderSession(arg, *outputFile, *imagesDir, !*hideThinking, summary.enabled, *fromTurn, *toTurn, *lastTurns)
 }

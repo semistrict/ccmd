@@ -57,6 +57,7 @@ type SessionInfo struct {
 	Timestamp time.Time
 	Preview   string
 	Turns     int
+	Format    SessionFormat
 }
 
 // ConversationEntry represents a single turn in the conversation.

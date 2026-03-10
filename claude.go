@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -143,8 +142,7 @@ func buildFastcompactArgs(transcriptPath string) []string {
 }
 
 func extractUUID(transcriptPath string) string {
-	base := filepath.Base(transcriptPath)
-	return strings.TrimSuffix(base, ".jsonl")
+	return sessionUUID(transcriptPath)
 }
 
 func fastcompactPrompt(ccmdBin, uuid, transcriptPath string) string {
@@ -153,6 +151,8 @@ func fastcompactPrompt(ccmdBin, uuid, transcriptPath string) string {
 		"To get the full conversation history, run: " + cmd + "\n\n" +
 		"Useful flags:\n" +
 		"  " + cmd + " -s           # one-line summary per turn (good for getting an overview first)\n" +
+		"  " + cmd + " -s=N:M       # summary of turns N to M\n" +
+		"  " + cmd + " -s=N:        # summary from turn N onwards\n" +
 		"  " + cmd + " -last N      # show only the last N turns\n" +
 		"  " + cmd + " -from N      # start from turn N (inclusive)\n" +
 		"  " + cmd + " -to N        # end at turn N (inclusive)\n" +

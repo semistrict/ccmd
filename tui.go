@@ -62,10 +62,19 @@ type tuiModel struct {
 	copied       bool
 	filtering     bool   // true when typing in the filter input
 	filter        string // current filter text
+	formatFilter  int    // 0=all, 1=claude only, 2=codex only
 }
 
 func sessionUUID(path string) string {
-	return strings.TrimSuffix(filepath.Base(path), ".jsonl")
+	base := strings.TrimSuffix(filepath.Base(path), ".jsonl")
+	// For Codex rollout files (rollout-<date>-<uuid>), extract the UUID
+	if strings.HasPrefix(base, "rollout-") && len(base) >= 36 {
+		candidate := base[len(base)-36:]
+		if isUUID(candidate) {
+			return candidate
+		}
+	}
+	return base
 }
 
 func relativeTime(t time.Time) string {
@@ -136,19 +145,22 @@ func scanTokenUsage(path string) (inputTokens, outputTokens int) {
 	return
 }
 
-func loadSummaryCmd(index int, path string) tea.Cmd {
+func loadSummaryCmd(index int, si SessionInfo) tea.Cmd {
 	return func() tea.Msg {
-		f, err := os.Open(path)
+		f, err := os.Open(si.Path)
 		if err != nil {
 			return summaryLoadedMsg{index: index}
 		}
 		defer f.Close()
 
-		records := parseRecords(f)
-		entries := buildConversation(records, path, false, "")
+		ps := parseSessionFile(f, si.Path, "")
 
 		var lines []summaryLine
-		for i, entry := range entries {
+		turnNum := 0
+		for _, entry := range ps.Entries {
+			if entry.Role != "system" {
+				turnNum++
+			}
 			text := strings.Join(entry.Texts, " ")
 			text = strings.ReplaceAll(text, "\n", " ")
 			for strings.Contains(text, "  ") {
@@ -156,15 +168,21 @@ func loadSummaryCmd(index int, path string) tea.Cmd {
 			}
 			text = strings.TrimSpace(text)
 			lines = append(lines, summaryLine{
-				turnNum: i + 1,
+				turnNum: turnNum,
 				role:    entry.Role,
 				text:    text,
 				tools:   len(entry.Tools),
 			})
 		}
 
-		// Sum token usage - re-scan file with usage-aware struct
-		totalInput, totalOutput := scanTokenUsage(path)
+		// Sum token usage
+		var totalInput, totalOutput int
+		switch si.Format {
+		case FormatCodex:
+			totalInput, totalOutput = scanCodexTokenUsage(si.Path)
+		default:
+			totalInput, totalOutput = scanTokenUsage(si.Path)
+		}
 
 		return summaryLoadedMsg{
 			index:        index,
@@ -186,7 +204,7 @@ func copyToClipboard(text string) tea.Cmd {
 
 func (m tuiModel) Init() tea.Cmd {
 	if len(m.sessions) > 0 {
-		return loadSummaryCmd(0, m.sessions[0].Path)
+		return loadSummaryCmd(0, m.sessions[0])
 	}
 	return nil
 }
@@ -200,6 +218,19 @@ func (m *tuiModel) applyFilter() tea.Cmd {
 		for _, s := range m.sessions {
 			projDir := filepath.Base(filepath.Dir(s.Path))
 			if projDir == m.projectFilter {
+				filtered = append(filtered, s)
+			}
+		}
+		m.sessions = filtered
+	}
+
+	// Format filter
+	if m.formatFilter != 0 {
+		var filtered []SessionInfo
+		for _, s := range m.sessions {
+			if m.formatFilter == 1 && s.Format == FormatClaudeCode {
+				filtered = append(filtered, s)
+			} else if m.formatFilter == 2 && s.Format == FormatCodex {
 				filtered = append(filtered, s)
 			}
 		}
@@ -230,7 +261,7 @@ func (m *tuiModel) applyFilter() tea.Cmd {
 	m.summaryFor = -1
 	m.summaryLines = nil
 	if len(m.sessions) > 0 {
-		return loadSummaryCmd(0, m.sessions[0].Path)
+		return loadSummaryCmd(0, m.sessions[0])
 	}
 	return nil
 }
@@ -303,39 +334,39 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.sessions) > 0 && m.cursor < len(m.sessions)-1 {
 				m.cursor++
 				m.fixScroll()
-				return m, loadSummaryCmd(m.cursor, m.sessions[m.cursor].Path)
+				return m, loadSummaryCmd(m.cursor, m.sessions[m.cursor])
 			}
 		case "k", "up":
 			if m.cursor > 0 {
 				m.cursor--
 				m.fixScroll()
-				return m, loadSummaryCmd(m.cursor, m.sessions[m.cursor].Path)
+				return m, loadSummaryCmd(m.cursor, m.sessions[m.cursor])
 			}
 		case "pgdown", "ctrl+d":
 			if len(m.sessions) > 0 {
 				lh := m.listHeight()
 				m.cursor = min(m.cursor+lh, len(m.sessions)-1)
 				m.fixScroll()
-				return m, loadSummaryCmd(m.cursor, m.sessions[m.cursor].Path)
+				return m, loadSummaryCmd(m.cursor, m.sessions[m.cursor])
 			}
 		case "pgup", "ctrl+u":
 			if len(m.sessions) > 0 {
 				lh := m.listHeight()
 				m.cursor = max(m.cursor-lh, 0)
 				m.fixScroll()
-				return m, loadSummaryCmd(m.cursor, m.sessions[m.cursor].Path)
+				return m, loadSummaryCmd(m.cursor, m.sessions[m.cursor])
 			}
 		case "home":
 			if len(m.sessions) > 0 {
 				m.cursor = 0
 				m.fixScroll()
-				return m, loadSummaryCmd(0, m.sessions[0].Path)
+				return m, loadSummaryCmd(0, m.sessions[0])
 			}
 		case "end":
 			if len(m.sessions) > 0 {
 				m.cursor = len(m.sessions) - 1
 				m.fixScroll()
-				return m, loadSummaryCmd(m.cursor, m.sessions[m.cursor].Path)
+				return m, loadSummaryCmd(m.cursor, m.sessions[m.cursor])
 			}
 		case "enter":
 			if len(m.sessions) > 0 {
@@ -371,6 +402,10 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "p":
 			m.projectOnly = !m.projectOnly
+			cmd := m.applyFilter()
+			return m, cmd
+		case "t":
+			m.formatFilter = (m.formatFilter + 1) % 3
 			cmd := m.applyFilter()
 			return m, cmd
 		}
@@ -506,6 +541,15 @@ func (m tuiModel) View() string {
 	if m.projectOnly {
 		projLabel = " all projects"
 	}
+	var fmtLabel string
+	switch m.formatFilter {
+	case 0:
+		fmtLabel = " claude"
+	case 1:
+		fmtLabel = " codex"
+	case 2:
+		fmtLabel = " all"
+	}
 	help := " " +
 		stKey.Render("↑↓") + stDim.Render(" navigate  ") +
 		stKey.Render("enter") + stDim.Render(" read  ") +
@@ -514,6 +558,7 @@ func (m tuiModel) View() string {
 		stKey.Render("s") + stDim.Render(" summary  ") +
 		stKey.Render("/") + stDim.Render(" filter  ") +
 		stKey.Render("p") + stDim.Render(projLabel+"  ") +
+		stKey.Render("t") + stDim.Render(fmtLabel+"  ") +
 		stKey.Render("y") + stDim.Render(" yank uuid  ") +
 		stKey.Render("q") + stDim.Render(" quit")
 	if m.filter != "" && !m.filtering {
@@ -526,6 +571,7 @@ func (m tuiModel) View() string {
 			stKey.Render("/") + stDim.Render(" filter  ") +
 			stKey.Render("esc") + stDim.Render(" clear  ") +
 			stKey.Render("p") + stDim.Render(projLabel+"  ") +
+			stKey.Render("t") + stDim.Render(fmtLabel+"  ") +
 			stKey.Render("y") + stDim.Render(" yank uuid  ") +
 			stKey.Render("q") + stDim.Render(" quit")
 	}
@@ -583,8 +629,13 @@ func (m tuiModel) renderRow(i int) string {
 }
 
 func (m tuiModel) renderSummaryLine(sl summaryLine) string {
-	turnStr := stDim.Render(fmt.Sprintf(" %2d ", sl.turnNum))
 	maxW := max(m.width-12, 20)
+
+	if sl.role == "system" {
+		return stDim.Render(fmt.Sprintf("     %s", truncate(sl.text, maxW)))
+	}
+
+	turnStr := stDim.Render(fmt.Sprintf(" %2d ", sl.turnNum))
 
 	switch sl.role {
 	case "user":
@@ -606,13 +657,17 @@ func runTUI(n int, showThinking bool, fromTurn, toTurn int) {
 		return
 	}
 
+	projectFilter := cwdProjectDir()
+
 	m := tuiModel{
 		allSessions:   sessions,
-		sessions:      sessions,
-		showProject:   true,
-		projectFilter: cwdProjectDir(),
+		showProject:   false,
+		projectOnly:   true,
+		projectFilter: projectFilter,
+		formatFilter:  1, // claude only by default
 		summaryFor:    -1,
 	}
+	m.applyFilter()
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	result, err := p.Run()

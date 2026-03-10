@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 )
 
 func truncate(s string, n int) string {
@@ -46,6 +45,17 @@ func shortPath(p string) string {
 	return p
 }
 
+// countTurns returns the number of non-system entries (matching writeEntries turn numbering).
+func countTurns(entries []ConversationEntry) int {
+	n := 0
+	for _, e := range entries {
+		if e.Role != "system" {
+			n++
+		}
+	}
+	return n
+}
+
 func isTerminal() bool {
 	fi, err := os.Stdout.Stat()
 	if err != nil {
@@ -62,11 +72,10 @@ func renderSession(path, outputFile, imagesDir string, showThinking, summary boo
 	}
 	defer f.Close()
 
-	records := parseRecords(f)
-	entries := buildConversation(records, path, false, imagesDir)
+	ps := parseSessionFile(f, path, imagesDir)
 
 	if lastTurns > 0 && fromTurn == 0 {
-		total := len(entries)
+		total := countTurns(ps.Entries)
 		if lastTurns < total {
 			fromTurn = total - lastTurns + 1
 		}
@@ -79,7 +88,7 @@ func renderSession(path, outputFile, imagesDir string, showThinking, summary boo
 			os.Exit(1)
 		}
 		defer of.Close()
-		writeMarkdown(of, records, entries, showThinking, summary, fromTurn, toTurn)
+		writeMarkdown(of, ps, showThinking, summary, fromTurn, toTurn)
 		fmt.Fprintf(os.Stderr, "Wrote %s\n", outputFile)
 		return
 	}
@@ -92,18 +101,18 @@ func renderSession(path, outputFile, imagesDir string, showThinking, summary boo
 
 		glowIn, err := glow.StdinPipe()
 		if err != nil {
-			writeMarkdown(os.Stdout, records, entries, showThinking, summary, fromTurn, toTurn)
+			writeMarkdown(os.Stdout, ps, showThinking, summary, fromTurn, toTurn)
 			return
 		}
 
 		glow.Start()
-		writeMarkdown(glowIn, records, entries, showThinking, summary, fromTurn, toTurn)
+		writeMarkdown(glowIn, ps, showThinking, summary, fromTurn, toTurn)
 		glowIn.Close()
 		glow.Wait()
 		return
 	}
 
-	writeMarkdown(os.Stdout, records, entries, showThinking, summary, fromTurn, toTurn)
+	writeMarkdown(os.Stdout, ps, showThinking, summary, fromTurn, toTurn)
 }
 
 func renderSessionToString(path string) string {
@@ -113,54 +122,37 @@ func renderSessionToString(path string) string {
 	}
 	defer f.Close()
 
-	records := parseRecords(f)
-	entries := buildConversation(records, path, false, "")
+	ps := parseSessionFile(f, path, "")
 
 	var buf strings.Builder
-	writeMarkdown(&buf, records, entries, false, false, 0, 0)
+	writeMarkdown(&buf, ps, false, false, 0, 0)
 	return buf.String()
 }
 
-func writeMarkdown(w io.Writer, records []Record, entries []ConversationEntry, showThinking, summary bool, fromTurn, toTurn int) {
-	var cwd, branch, sessionID, version string
-	var sessionStart time.Time
-	for _, rec := range records {
-		if rec.CWD != "" && cwd == "" {
-			cwd = rec.CWD
-		}
-		if rec.GitBranch != "" && branch == "" {
-			branch = rec.GitBranch
-		}
-		if rec.SessionID != "" && sessionID == "" {
-			sessionID = rec.SessionID
-		}
-		if rec.Version != "" && version == "" {
-			version = rec.Version
-		}
-		if rec.Timestamp != "" && sessionStart.IsZero() {
-			sessionStart, _ = time.Parse(time.RFC3339Nano, rec.Timestamp)
-		}
-		if cwd != "" && branch != "" && sessionID != "" {
-			break
-		}
+func writeMarkdown(w io.Writer, ps ParsedSession, showThinking, summary bool, fromTurn, toTurn int) {
+	title := "Claude Code Session"
+	versionLabel := "Claude Code"
+	if ps.Format == FormatCodex {
+		title = "Codex Session"
+		versionLabel = "Codex"
 	}
 
-	fmt.Fprintf(w, "# Claude Code Session\n\n")
-	if !sessionStart.IsZero() {
-		fmt.Fprintf(w, "**Date:** %s  \n", sessionStart.Format("2006-01-02 15:04"))
+	fmt.Fprintf(w, "# %s\n\n", title)
+	if !ps.StartTime.IsZero() {
+		fmt.Fprintf(w, "**Date:** %s  \n", ps.StartTime.Format("2006-01-02 15:04"))
 	}
-	if cwd != "" {
-		fmt.Fprintf(w, "**Project:** `%s`  \n", cwd)
+	if ps.CWD != "" {
+		fmt.Fprintf(w, "**Project:** `%s`  \n", ps.CWD)
 	}
-	if branch != "" {
-		fmt.Fprintf(w, "**Branch:** `%s`  \n", branch)
+	if ps.GitBranch != "" {
+		fmt.Fprintf(w, "**Branch:** `%s`  \n", ps.GitBranch)
 	}
-	if version != "" {
-		fmt.Fprintf(w, "**Claude Code:** v%s  \n", version)
+	if ps.Version != "" {
+		fmt.Fprintf(w, "**%s:** v%s  \n", versionLabel, ps.Version)
 	}
 	fmt.Fprintf(w, "\n---\n\n")
 
-	writeEntries(w, entries, showThinking, summary, fromTurn, toTurn, 0)
+	writeEntries(w, ps.Entries, showThinking, summary, fromTurn, toTurn, 0)
 }
 
 func writeEntries(w io.Writer, entries []ConversationEntry, showThinking, summary bool, fromTurn, toTurn, depth int) {

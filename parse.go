@@ -233,18 +233,7 @@ func buildConversation(records []Record, sessionPath string, isSubagent bool, im
 	}
 
 	// Second pass: merge consecutive same-role entries
-	var entries []ConversationEntry
-	for _, e := range raw {
-		if len(entries) > 0 && entries[len(entries)-1].Role == e.Role {
-			last := &entries[len(entries)-1]
-			last.Texts = append(last.Texts, e.Texts...)
-			last.Thinking = append(last.Thinking, e.Thinking...)
-			last.Tools = append(last.Tools, e.Tools...)
-		} else {
-			entries = append(entries, e)
-		}
-	}
-	return entries
+	return mergeEntries(raw)
 }
 
 func loadSubagent(sessionPath, agentID string) []ConversationEntry {
