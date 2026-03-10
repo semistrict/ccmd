@@ -153,6 +153,7 @@ func fastcompactPrompt(ccmdBin, uuid, transcriptPath string) string {
 		"To get the full conversation history, run: " + cmd + "\n\n" +
 		"Useful flags:\n" +
 		"  " + cmd + " -s           # one-line summary per turn (good for getting an overview first)\n" +
+		"  " + cmd + " -last N      # show only the last N turns\n" +
 		"  " + cmd + " -from N      # start from turn N (inclusive)\n" +
 		"  " + cmd + " -to N        # end at turn N (inclusive)\n" +
 		"  " + cmd + " -from N -to M # read a specific range of turns\n" +

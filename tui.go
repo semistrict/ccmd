@@ -639,9 +639,9 @@ func runTUI(n int, showThinking bool, fromTurn, toTurn int) {
 		runClaude(args)
 
 	case "summary":
-		renderSession(final.chosen, "", showThinking, true, fromTurn, toTurn)
+		renderSession(final.chosen, "", showThinking, true, fromTurn, toTurn, 0)
 	default:
-		renderSession(final.chosen, "", showThinking, false, fromTurn, toTurn)
+		renderSession(final.chosen, "", showThinking, false, fromTurn, toTurn, 0)
 	}
 }
 

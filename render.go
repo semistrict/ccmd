@@ -54,7 +54,7 @@ func isTerminal() bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
-func renderSession(path, outputFile string, showThinking, summary bool, fromTurn, toTurn int) {
+func renderSession(path, outputFile string, showThinking, summary bool, fromTurn, toTurn, lastTurns int) {
 	f, err := os.Open(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -64,6 +64,13 @@ func renderSession(path, outputFile string, showThinking, summary bool, fromTurn
 
 	records := parseRecords(f)
 	entries := buildConversation(records, path, false)
+
+	if lastTurns > 0 && fromTurn == 0 {
+		total := len(entries)
+		if lastTurns < total {
+			fromTurn = total - lastTurns + 1
+		}
+	}
 
 	if outputFile != "" {
 		of, err := os.Create(outputFile)
@@ -161,6 +168,16 @@ func writeEntries(w io.Writer, entries []ConversationEntry, showThinking, summar
 	turnNum := 0
 
 	for _, entry := range entries {
+		// System entries (compact boundary, PR links) don't count as turns
+		if entry.Role == "system" {
+			if summary && depth == 0 {
+				fmt.Fprintf(w, "     %s\n", strings.Join(entry.Texts, " "))
+			} else {
+				fmt.Fprintf(w, "%s%s\n\n", prefix, strings.Join(entry.Texts, " "))
+			}
+			continue
+		}
+
 		turnNum++
 
 		if depth == 0 && fromTurn > 0 && turnNum < fromTurn {

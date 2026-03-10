@@ -7,6 +7,7 @@ import (
 
 type Record struct {
 	Type            string          `json:"type"`
+	Subtype         string          `json:"subtype,omitempty"`
 	Message         *MessageData    `json:"message,omitempty"`
 	Timestamp       string          `json:"timestamp"`
 	SessionID       string          `json:"sessionId"`
@@ -17,6 +18,10 @@ type Record struct {
 	Data            json.RawMessage `json:"data,omitempty"`
 	ParentToolUseID string          `json:"parentToolUseID"`
 	ToolUseResult   json.RawMessage `json:"toolUseResult,omitempty"`
+	Content         string          `json:"content,omitempty"`
+	PRUrl           string          `json:"prUrl,omitempty"`
+	PRRepository    string          `json:"prRepository,omitempty"`
+	PRNumber        int             `json:"prNumber,omitempty"`
 }
 
 type MessageData struct {

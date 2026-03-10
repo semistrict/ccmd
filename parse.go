@@ -118,6 +118,32 @@ func buildConversation(records []Record, sessionPath string, isSubagent bool) []
 		if !isSubagent && rec.IsSidechain {
 			continue
 		}
+
+		switch rec.Type {
+		case "system":
+			if rec.Subtype == "compact_boundary" {
+				ts, _ := time.Parse(time.RFC3339Nano, rec.Timestamp)
+				raw = append(raw, ConversationEntry{
+					Role:      "system",
+					Texts:     []string{"*— context compacted —*"},
+					Timestamp: ts,
+				})
+			}
+			continue
+
+		case "pr-link":
+			if rec.PRUrl != "" {
+				ts, _ := time.Parse(time.RFC3339Nano, rec.Timestamp)
+				text := fmt.Sprintf("PR created: [%s#%d](%s)", rec.PRRepository, rec.PRNumber, rec.PRUrl)
+				raw = append(raw, ConversationEntry{
+					Role:      "system",
+					Texts:     []string{text},
+					Timestamp: ts,
+				})
+			}
+			continue
+		}
+
 		if rec.Message == nil {
 			continue
 		}
@@ -125,11 +151,25 @@ func buildConversation(records []Record, sessionPath string, isSubagent bool) []
 		switch rec.Type {
 		case "user":
 			text, blocks := parseContent(rec.Message.Content)
+			var texts []string
 			if text != "" {
+				texts = append(texts, text)
+			}
+			for _, b := range blocks {
+				switch b.Type {
+				case "text":
+					if b.Text != "" {
+						texts = append(texts, b.Text)
+					}
+				case "image":
+					texts = append(texts, "[image]")
+				}
+			}
+			if len(texts) > 0 {
 				ts, _ := time.Parse(time.RFC3339Nano, rec.Timestamp)
 				raw = append(raw, ConversationEntry{
 					Role:      "user",
-					Texts:     []string{text},
+					Texts:     texts,
 					Timestamp: ts,
 				})
 			} else if len(blocks) > 0 {

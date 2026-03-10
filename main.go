@@ -28,6 +28,7 @@ func main() {
 	summary := flag.Bool("s", false, "summary mode: one line per turn")
 	fromTurn := flag.Int("from", 0, "start turn number (inclusive)")
 	toTurn := flag.Int("to", 0, "end turn number (inclusive)")
+	lastTurns := flag.Int("last", 0, "show only the last N turns")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: ccmd [flags] [session-file-or-number-or-uuid]\n\n")
 		fmt.Fprintf(os.Stderr, "Parse Claude Code JSONL session files into Markdown.\n\n")
@@ -72,5 +73,5 @@ func main() {
 		arg = found
 	}
 
-	renderSession(arg, *outputFile, !*hideThinking, *summary, *fromTurn, *toTurn)
+	renderSession(arg, *outputFile, !*hideThinking, *summary, *fromTurn, *toTurn, *lastTurns)
 }
