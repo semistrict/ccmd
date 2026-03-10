@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,7 +44,7 @@ func parseContent(raw json.RawMessage) (string, []ContentBlock) {
 	return "", nil
 }
 
-func buildConversation(records []Record, sessionPath string, isSubagent bool) []ConversationEntry {
+func buildConversation(records []Record, sessionPath string, isSubagent bool, imagesDir string) []ConversationEntry {
 	// Build tool_use_id -> agentId map from progress records
 	agentMap := make(map[string]string) // tool_use_id -> agentId
 	for _, rec := range records {
@@ -113,6 +114,7 @@ func buildConversation(records []Record, sessionPath string, isSubagent bool) []
 	// First pass: build raw entries, grouping by message ID
 	var raw []ConversationEntry
 	seenMsgID := make(map[string]int)
+	imageNum := 0
 
 	for _, rec := range records {
 		if !isSubagent && rec.IsSidechain {
@@ -162,6 +164,12 @@ func buildConversation(records []Record, sessionPath string, isSubagent bool) []
 						texts = append(texts, b.Text)
 					}
 				case "image":
+					if imagesDir != "" && b.Source != nil && b.Source.Data != "" {
+						if path := saveImage(imagesDir, b.Source, &imageNum); path != "" {
+							texts = append(texts, fmt.Sprintf("![image](%s)", path))
+							continue
+						}
+					}
 					texts = append(texts, "[image]")
 				}
 			}
@@ -250,7 +258,7 @@ func loadSubagent(sessionPath, agentID string) []ConversationEntry {
 	defer f.Close()
 
 	records := parseRecords(f)
-	return buildConversation(records, agentPath, true)
+	return buildConversation(records, agentPath, true, "")
 }
 
 func formatToolCall(b ContentBlock) ToolCall {
@@ -336,4 +344,29 @@ func extractToolResultText(b ContentBlock) string {
 		return strings.Join(texts, "\n")
 	}
 	return ""
+}
+
+func saveImage(dir string, src *ImageSource, num *int) string {
+	data, err := base64.StdEncoding.DecodeString(src.Data)
+	if err != nil {
+		return ""
+	}
+
+	*num++
+	ext := ".png"
+	switch src.MediaType {
+	case "image/jpeg":
+		ext = ".jpg"
+	case "image/gif":
+		ext = ".gif"
+	case "image/webp":
+		ext = ".webp"
+	}
+
+	os.MkdirAll(dir, 0755)
+	path := filepath.Join(dir, fmt.Sprintf("image-%d%s", *num, ext))
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return ""
+	}
+	return path
 }

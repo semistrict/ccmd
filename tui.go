@@ -144,7 +144,7 @@ func loadSummaryCmd(index int, path string) tea.Cmd {
 		defer f.Close()
 
 		records := parseRecords(f)
-		entries := buildConversation(records, path, false)
+		entries := buildConversation(records, path, false, "")
 
 		var lines []summaryLine
 		for i, entry := range entries {
@@ -639,9 +639,9 @@ func runTUI(n int, showThinking bool, fromTurn, toTurn int) {
 		runClaude(args)
 
 	case "summary":
-		renderSession(final.chosen, "", showThinking, true, fromTurn, toTurn, 0)
+		renderSession(final.chosen, "", "", showThinking, true, fromTurn, toTurn, 0)
 	default:
-		renderSession(final.chosen, "", showThinking, false, fromTurn, toTurn, 0)
+		renderSession(final.chosen, "", "", showThinking, false, fromTurn, toTurn, 0)
 	}
 }
 

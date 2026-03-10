@@ -41,6 +41,13 @@ type ContentBlock struct {
 	Content   json.RawMessage `json:"content,omitempty"`
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
+	Source    *ImageSource    `json:"source,omitempty"`
+}
+
+type ImageSource struct {
+	Type      string `json:"type"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 }
 
 type SessionInfo struct {

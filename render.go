@@ -54,7 +54,7 @@ func isTerminal() bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
-func renderSession(path, outputFile string, showThinking, summary bool, fromTurn, toTurn, lastTurns int) {
+func renderSession(path, outputFile, imagesDir string, showThinking, summary bool, fromTurn, toTurn, lastTurns int) {
 	f, err := os.Open(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -63,7 +63,7 @@ func renderSession(path, outputFile string, showThinking, summary bool, fromTurn
 	defer f.Close()
 
 	records := parseRecords(f)
-	entries := buildConversation(records, path, false)
+	entries := buildConversation(records, path, false, imagesDir)
 
 	if lastTurns > 0 && fromTurn == 0 {
 		total := len(entries)
@@ -114,7 +114,7 @@ func renderSessionToString(path string) string {
 	defer f.Close()
 
 	records := parseRecords(f)
-	entries := buildConversation(records, path, false)
+	entries := buildConversation(records, path, false, "")
 
 	var buf strings.Builder
 	writeMarkdown(&buf, records, entries, false, false, 0, 0)

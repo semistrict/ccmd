@@ -65,7 +65,7 @@ func TestBuildConversation(t *testing.T) {
 {"type":"user","timestamp":"2025-01-01T00:00:02Z","message":{"role":"user","content":"thanks"}}
 `
 	records := parseRecords(strings.NewReader(input))
-	entries := buildConversation(records, "/tmp/test.jsonl", false)
+	entries := buildConversation(records, "/tmp/test.jsonl", false, "")
 
 	if len(entries) != 3 {
 		t.Fatalf("expected 3 entries, got %d", len(entries))
