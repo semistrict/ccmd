@@ -154,18 +154,19 @@ func extractUUID(transcriptPath string) string {
 }
 
 func fastcompactPrompt(ccmdBin, parentUUID string, skills []string) string {
-	cmd := ccmdBin + " parent"
 	prompt := "This session is being continued from a previous conversation that ran out of context. " +
-		"To get the full conversation history, run: " + cmd + "\n" +
+		"To get the full conversation history, run: " + ccmdBin + "\n" +
 		"Parent session UUID: " + parentUUID + "\n\n" +
 		"Useful flags:\n" +
-		"  " + cmd + " -s           # one-line summary per turn (good for getting an overview first)\n" +
-		"  " + cmd + " -s=N:M       # summary of turns N to M\n" +
-		"  " + cmd + " -s=N:        # summary from turn N onwards\n" +
-		"  " + cmd + " -last N      # show only the last N turns\n" +
-		"  " + cmd + " -no-thinking # hide thinking blocks\n" +
-		"  " + ccmdBin + " files parent          # list all files read/written\n" +
-		"  " + ccmdBin + " files parent -last 20 # list last 20 files\n\n" +
+		"  " + ccmdBin + " -s           # one-line summary per turn (good for getting an overview first)\n" +
+		"  " + ccmdBin + " -s=N:M       # summary of turns N to M\n" +
+		"  " + ccmdBin + " -s=N:        # summary from turn N onwards\n" +
+		"  " + ccmdBin + " -last N      # show only the last N turns\n" +
+		"  " + ccmdBin + " -no-thinking # hide thinking blocks\n" +
+		"  " + ccmdBin + " files          # list all files read/written\n" +
+		"  " + ccmdBin + " files -last 20 # list last 20 files\n" +
+		"  " + ccmdBin + " diff           # show all file changes (Edit/Write)\n" +
+		"  " + ccmdBin + " diff -last 5   # show changes from last 5 turns\n\n" +
 		"Read the output to understand what was being worked on, then continue the conversation from where it left off without asking the user any further questions. " +
 		"Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with \"I'll continue\" or similar. " +
 		"Pick up the last task as if the break never happened."

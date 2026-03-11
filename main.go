@@ -92,6 +92,9 @@ func main() {
 		case "files":
 			runFiles(os.Args[2:])
 			return
+		case "diff":
+			runDiff(os.Args[2:])
+			return
 		case "precompact":
 			precompact()
 			return
@@ -118,7 +121,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Commands:\n")
 		fmt.Fprintf(os.Stderr, "  ccmd claude ...  launch claude with fastcompact support\n")
 		fmt.Fprintf(os.Stderr, "  ccmd fastcompact render & restart the most recent session\n")
-		fmt.Fprintf(os.Stderr, "  ccmd files ...   list files read/written in a session\n\n")
+		fmt.Fprintf(os.Stderr, "  ccmd files ...   list files read/written in a session\n")
+		fmt.Fprintf(os.Stderr, "  ccmd diff ...    show file changes (Edit/Write) in a session\n\n")
 		fmt.Fprintf(os.Stderr, "Session browser:\n")
 		fmt.Fprintf(os.Stderr, "  No arguments     interactive session browser (plain list if piped)\n")
 		fmt.Fprintf(os.Stderr, "  <number>         render the Nth most recent session\n")
@@ -138,6 +142,16 @@ func main() {
 	}
 
 	if flag.NArg() == 0 {
+		// Default to parent session if CCMD_PARENT_UUID is set
+		if parentUUID := os.Getenv("CCMD_PARENT_UUID"); parentUUID != "" {
+			found := findSessionByUUID(parentUUID)
+			if found == "" {
+				fmt.Fprintf(os.Stderr, "error: no session found for UUID %s\n", parentUUID)
+				os.Exit(1)
+			}
+			renderSession(found, *outputFile, *imagesDir, !*hideThinking, summary.enabled, *fromTurn, *toTurn, *lastTurns)
+			return
+		}
 		if isTerminal() {
 			runTUI(*numSessions, !*hideThinking, *fromTurn, *toTurn)
 		} else {

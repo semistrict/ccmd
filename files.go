@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -55,43 +54,7 @@ func runFiles(args []string) {
 	}
 	fs.Parse(args)
 
-	// Resolve session path
-	var path string
-	if fs.NArg() == 0 {
-		sessions := findSessions(0, cwdProjectDir())
-		if len(sessions) == 0 {
-			fmt.Fprintf(os.Stderr, "error: no sessions found\n")
-			os.Exit(1)
-		}
-		path = sessions[0].Path
-	} else {
-		arg := fs.Arg(0)
-		if arg == "parent" {
-			parentUUID := os.Getenv("CCMD_PARENT_UUID")
-			if parentUUID == "" {
-				fmt.Fprintf(os.Stderr, "error: CCMD_PARENT_UUID not set\n")
-				os.Exit(1)
-			}
-			arg = parentUUID
-		}
-		if n, err := strconv.Atoi(arg); err == nil {
-			sessions := findSessions(0, cwdProjectDir())
-			if n < 1 || n > len(sessions) {
-				fmt.Fprintf(os.Stderr, "error: session %d not found (have %d sessions)\n", n, len(sessions))
-				os.Exit(1)
-			}
-			path = sessions[n-1].Path
-		} else if isUUID(arg) {
-			found := findSessionByUUID(arg)
-			if found == "" {
-				fmt.Fprintf(os.Stderr, "error: no session found for UUID %s\n", arg)
-				os.Exit(1)
-			}
-			path = found
-		} else {
-			path = arg
-		}
-	}
+	path := resolveSessionArg(fs)
 
 	f, err := os.Open(path)
 	if err != nil {
