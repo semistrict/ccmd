@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/google/shlex"
 )
 
 func runClaude(args []string) {
@@ -20,9 +22,10 @@ func runClaude(args []string) {
 		os.Exit(1)
 	}
 
-	// Inject hooks and permissions for this invocation
-	hooksJSON := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"ccmd precompact"}]}]}}`
-	args = append([]string{"--dangerously-skip-permissions", "--settings", hooksJSON}, args...)
+	// Inject hooks for this invocation
+	hooksJSON := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"ccmd precompact"}]}],"PreToolUse":[{"hooks":[{"type":"command","command":"ccmd pretooluse"}]}]}}`
+	args = append([]string{"--settings", hooksJSON}, args...)
+	slog("runClaude: args=%v", args)
 
 	// Set CCMD_PID so hooks can signal us back
 	os.Setenv("CCMD_PID", strconv.Itoa(os.Getpid()))
@@ -137,7 +140,7 @@ func fastcompact(args []string) {
 	prompt := fastcompactPrompt(os.Args[0], uuid, skills)
 
 	env := append(os.Environ(), "CCMD_PARENT_UUID="+uuid)
-	err = syscall.Exec(claudePath, []string{"claude", "--dangerously-skip-permissions", prompt}, env)
+	err = syscall.Exec(claudePath, []string{"claude", prompt}, env)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: exec claude: %v\n", err)
 		os.Exit(1)
@@ -146,7 +149,7 @@ func fastcompact(args []string) {
 
 func buildFastcompactArgs(parentUUID string, skills []string) []string {
 	prompt := fastcompactPrompt(os.Args[0], parentUUID, skills)
-	return []string{"--dangerously-skip-permissions", prompt}
+	return []string{prompt}
 }
 
 func extractUUID(transcriptPath string) string {
@@ -218,6 +221,87 @@ func extractSkills(transcriptPath string) []string {
 		}
 	}
 	return skills
+}
+
+func preToolUse() {
+	input, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		slog("pretooluse: failed to read stdin: %v", err)
+		os.Exit(0)
+	}
+
+	slog("pretooluse: input=%s", string(input))
+
+	var data struct {
+		ToolName  string          `json:"tool_name"`
+		ToolInput json.RawMessage `json:"tool_input"`
+	}
+	if err := json.Unmarshal(input, &data); err != nil {
+		slog("pretooluse: failed to unmarshal: %v", err)
+		os.Exit(0)
+	}
+
+	// For Bash tool calls, check for dangerous commands
+	if data.ToolName == "Bash" {
+		var bashInput struct {
+			Command string `json:"command"`
+		}
+		if err := json.Unmarshal(data.ToolInput, &bashInput); err == nil {
+			if isDangerous(bashInput.Command) {
+				slog("pretooluse: BLOCKED dangerous command: %s", bashInput.Command)
+				os.Exit(0)
+			}
+		}
+	}
+
+	slog("pretooluse: ALLOW tool=%s", data.ToolName)
+	// Auto-approve everything else
+	fmt.Print(`{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}`)
+}
+
+// isDangerous checks if a shell command contains dangerous operations
+// by tokenizing with shlex so quoted strings (like commit messages) are
+// treated as single tokens and don't trigger false positives.
+func isDangerous(cmd string) bool {
+	tokens, err := shlex.Split(cmd)
+	if err != nil {
+		// If we can't parse it, let the normal prompt handle it
+		return true
+	}
+
+	dangerous := [][]string{
+		{"rm", "-rf"},
+		{"rm", "-Rf"},
+		{"git", "push", "--force"},
+		{"git", "push", "-f"},
+		{"git", "reset", "--hard"},
+		{"git", "checkout", "--", "."},
+		{"git", "clean", "-f"},
+		{"git", "stash"},
+	}
+
+	for _, pattern := range dangerous {
+		if containsSequence(tokens, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsSequence checks if tokens contains pattern as a subsequence
+// in order, allowing gaps (e.g. ["git", "push", "-u", "--force"] matches
+// ["git", "push", "--force"]).
+func containsSequence(tokens, pattern []string) bool {
+	pi := 0
+	for _, tok := range tokens {
+		if tok == pattern[pi] {
+			pi++
+			if pi == len(pattern) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func precompact() {

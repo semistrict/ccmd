@@ -98,6 +98,9 @@ func main() {
 		case "precompact":
 			precompact()
 			return
+		case "pretooluse":
+			preToolUse()
+			return
 		}
 	}
 
