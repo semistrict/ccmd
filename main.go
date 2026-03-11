@@ -55,6 +55,31 @@ func (f *summaryFlag) Set(s string) error {
 
 func (f *summaryFlag) IsBoolFlag() bool { return true }
 
+// reorderArgs moves flags before positional arguments in os.Args[1:],
+// so Go's flag package (which stops at the first non-flag) parses them all.
+func reorderArgs() {
+	// Flags that take a following argument (not using =)
+	withValue := map[string]bool{
+		"-o": true, "-n": true, "-from": true, "-to": true, "-last": true, "-images": true,
+	}
+	var flags, positional []string
+	args := os.Args[1:]
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "-") {
+			flags = append(flags, a)
+			// If this flag takes a separate value and doesn't use =, consume next arg too
+			if withValue[a] && !strings.Contains(a, "=") && i+1 < len(args) {
+				i++
+				flags = append(flags, args[i])
+			}
+		} else {
+			positional = append(positional, a)
+		}
+	}
+	copy(os.Args[1:], append(flags, positional...))
+}
+
 func main() {
 	if len(os.Args) >= 2 {
 		switch os.Args[1] {
@@ -69,6 +94,11 @@ func main() {
 			return
 		}
 	}
+
+	// Reorder os.Args so flags come before positional args.
+	// Go's flag package stops parsing at the first non-flag argument,
+	// so "ccmd 1 -s -last 20" would fail without this.
+	reorderArgs()
 
 	outputFile := flag.String("o", "", "write output to file instead of stdout")
 	numSessions := flag.Int("n", 0, "limit number of sessions to list (0 = all)")
@@ -113,6 +143,16 @@ func main() {
 	}
 
 	arg := flag.Arg(0)
+
+	// "parent" resolves to the UUID from CCMD_PARENT_UUID env var
+	if arg == "parent" {
+		parentUUID := os.Getenv("CCMD_PARENT_UUID")
+		if parentUUID == "" {
+			fmt.Fprintf(os.Stderr, "error: CCMD_PARENT_UUID not set\n")
+			os.Exit(1)
+		}
+		arg = parentUUID
+	}
 
 	// If the argument is a number, look it up from the session list
 	if n, err := strconv.Atoi(arg); err == nil {

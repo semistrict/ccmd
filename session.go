@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -214,44 +213,58 @@ func scanSessionInfo(path, projectDir string, modTime time.Time) *SessionInfo {
 	found := false
 	turns := 0
 	lastRole := ""
+	seenMsgID := make(map[string]bool)
 
 	for scanner.Scan() {
-		line := scanner.Bytes()
-
-		// Fast string checks — avoid JSON parsing for turn counting
-		if bytes.Contains(line, []byte(`"isSidechain":true`)) {
+		var rec Record
+		if json.Unmarshal(scanner.Bytes(), &rec) != nil {
 			continue
 		}
 
-		isUser := bytes.Contains(line, []byte(`"type":"user"`))
-		isAsst := bytes.Contains(line, []byte(`"type":"assistant"`))
+		if rec.IsSidechain {
+			continue
+		}
 
-		if !found && (isUser || isAsst) {
+		switch rec.Type {
+		case "user":
+			if rec.Message == nil {
+				continue
+			}
+			// Skip tool-result-only user messages (content is an array starting with [)
+			if len(rec.Message.Content) > 0 && rec.Message.Content[0] == '[' {
+				continue
+			}
+			text, _ := parseContent(rec.Message.Content)
+			if text == "" {
+				continue
+			}
 			found = true
-		}
-
-		if isUser && lastRole != "user" {
-			turns++
-			lastRole = "user"
-		} else if isAsst && lastRole != "assistant" {
-			turns++
-			lastRole = "assistant"
-		}
-
-		// Only JSON-parse to extract preview+cwd from first user message
-		if isUser && preview == "" {
-			var rec Record
-			if json.Unmarshal(line, &rec) == nil && rec.Message != nil {
+			if lastRole != "user" {
+				turns++
+				lastRole = "user"
+			}
+			if preview == "" {
 				if rec.CWD != "" {
 					cwd = rec.CWD
 				}
-				text, _ := parseContent(rec.Message.Content)
-				if text != "" {
-					preview = text
-					if len(preview) > 100 {
-						preview = preview[:100] + "..."
-					}
+				preview = text
+				if len(preview) > 100 {
+					preview = preview[:100] + "..."
 				}
+			}
+
+		case "assistant":
+			if rec.Message == nil || rec.Message.ID == "" {
+				continue
+			}
+			if seenMsgID[rec.Message.ID] {
+				continue
+			}
+			seenMsgID[rec.Message.ID] = true
+			found = true
+			if lastRole != "assistant" {
+				turns++
+				lastRole = "assistant"
 			}
 		}
 	}

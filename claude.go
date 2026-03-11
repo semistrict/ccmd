@@ -28,11 +28,15 @@ func runClaude(args []string) {
 	controlFile := fmt.Sprintf("/tmp/ccmd-%d.path", os.Getpid())
 	defer os.Remove(controlFile)
 
+	var parentUUID string
 	for {
 		cmd := exec.Command(claudePath, args...)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+		if parentUUID != "" {
+			cmd.Env = append(os.Environ(), "CCMD_PARENT_UUID="+parentUUID)
+		}
 
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGUSR1)
@@ -86,7 +90,8 @@ func runClaude(args []string) {
 			}
 
 			showRestartBanner(transcriptPath)
-			args = buildFastcompactArgs(transcriptPath)
+			parentUUID = extractUUID(transcriptPath)
+			args = buildFastcompactArgs()
 		}
 	}
 }
@@ -126,18 +131,18 @@ func fastcompact(args []string) {
 		os.Exit(1)
 	}
 
-	prompt := fastcompactPrompt(os.Args[0], uuid, arg)
+	prompt := fastcompactPrompt(os.Args[0])
 
-	err = syscall.Exec(claudePath, []string{"claude", "--dangerously-skip-permissions", prompt}, os.Environ())
+	env := append(os.Environ(), "CCMD_PARENT_UUID="+uuid)
+	err = syscall.Exec(claudePath, []string{"claude", "--dangerously-skip-permissions", prompt}, env)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: exec claude: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func buildFastcompactArgs(transcriptPath string) []string {
-	uuid := extractUUID(transcriptPath)
-	prompt := fastcompactPrompt(os.Args[0], uuid, transcriptPath)
+func buildFastcompactArgs() []string {
+	prompt := fastcompactPrompt(os.Args[0])
 	return []string{"--dangerously-skip-permissions", prompt}
 }
 
@@ -145,8 +150,8 @@ func extractUUID(transcriptPath string) string {
 	return sessionUUID(transcriptPath)
 }
 
-func fastcompactPrompt(ccmdBin, uuid, transcriptPath string) string {
-	cmd := ccmdBin + " " + uuid
+func fastcompactPrompt(ccmdBin string) string {
+	cmd := ccmdBin + " parent"
 	return "This session is being continued from a previous conversation that ran out of context. " +
 		"To get the full conversation history, run: " + cmd + "\n\n" +
 		"Useful flags:\n" +
