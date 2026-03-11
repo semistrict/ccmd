@@ -95,12 +95,6 @@ func main() {
 		case "diff":
 			runDiff(os.Args[2:])
 			return
-		case "precompact":
-			precompact()
-			return
-		case "pretooluse":
-			preToolUse()
-			return
 		}
 	}
 
