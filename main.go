@@ -89,6 +89,9 @@ func main() {
 		case "fastcompact":
 			fastcompact(os.Args[2:])
 			return
+		case "files":
+			runFiles(os.Args[2:])
+			return
 		case "precompact":
 			precompact()
 			return
@@ -114,7 +117,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Parse Claude Code JSONL session files into Markdown.\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
 		fmt.Fprintf(os.Stderr, "  ccmd claude ...  launch claude with fastcompact support\n")
-		fmt.Fprintf(os.Stderr, "  ccmd fastcompact render & restart the most recent session\n\n")
+		fmt.Fprintf(os.Stderr, "  ccmd fastcompact render & restart the most recent session\n")
+		fmt.Fprintf(os.Stderr, "  ccmd files ...   list files read/written in a session\n\n")
 		fmt.Fprintf(os.Stderr, "Session browser:\n")
 		fmt.Fprintf(os.Stderr, "  No arguments     interactive session browser (plain list if piped)\n")
 		fmt.Fprintf(os.Stderr, "  <number>         render the Nth most recent session\n")

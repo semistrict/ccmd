@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -91,7 +92,8 @@ func runClaude(args []string) {
 
 			showRestartBanner(transcriptPath)
 			parentUUID = extractUUID(transcriptPath)
-			args = buildFastcompactArgs()
+			skills := extractSkills(transcriptPath)
+			args = buildFastcompactArgs(parentUUID, skills)
 		}
 	}
 }
@@ -131,7 +133,8 @@ func fastcompact(args []string) {
 		os.Exit(1)
 	}
 
-	prompt := fastcompactPrompt(os.Args[0])
+	skills := extractSkills(arg)
+	prompt := fastcompactPrompt(os.Args[0], uuid, skills)
 
 	env := append(os.Environ(), "CCMD_PARENT_UUID="+uuid)
 	err = syscall.Exec(claudePath, []string{"claude", "--dangerously-skip-permissions", prompt}, env)
@@ -141,8 +144,8 @@ func fastcompact(args []string) {
 	}
 }
 
-func buildFastcompactArgs() []string {
-	prompt := fastcompactPrompt(os.Args[0])
+func buildFastcompactArgs(parentUUID string, skills []string) []string {
+	prompt := fastcompactPrompt(os.Args[0], parentUUID, skills)
 	return []string{"--dangerously-skip-permissions", prompt}
 }
 
@@ -150,22 +153,70 @@ func extractUUID(transcriptPath string) string {
 	return sessionUUID(transcriptPath)
 }
 
-func fastcompactPrompt(ccmdBin string) string {
+func fastcompactPrompt(ccmdBin, parentUUID string, skills []string) string {
 	cmd := ccmdBin + " parent"
-	return "This session is being continued from a previous conversation that ran out of context. " +
-		"To get the full conversation history, run: " + cmd + "\n\n" +
+	prompt := "This session is being continued from a previous conversation that ran out of context. " +
+		"To get the full conversation history, run: " + cmd + "\n" +
+		"Parent session UUID: " + parentUUID + "\n\n" +
 		"Useful flags:\n" +
 		"  " + cmd + " -s           # one-line summary per turn (good for getting an overview first)\n" +
 		"  " + cmd + " -s=N:M       # summary of turns N to M\n" +
 		"  " + cmd + " -s=N:        # summary from turn N onwards\n" +
 		"  " + cmd + " -last N      # show only the last N turns\n" +
-		"  " + cmd + " -from N      # start from turn N (inclusive)\n" +
-		"  " + cmd + " -to N        # end at turn N (inclusive)\n" +
-		"  " + cmd + " -from N -to M # read a specific range of turns\n" +
-		"  " + cmd + " -no-thinking # hide thinking blocks\n\n" +
+		"  " + cmd + " -no-thinking # hide thinking blocks\n" +
+		"  " + ccmdBin + " files parent          # list all files read/written\n" +
+		"  " + ccmdBin + " files parent -last 20 # list last 20 files\n\n" +
 		"Read the output to understand what was being worked on, then continue the conversation from where it left off without asking the user any further questions. " +
 		"Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with \"I'll continue\" or similar. " +
 		"Pick up the last task as if the break never happened."
+
+	if len(skills) > 0 {
+		prompt += "\n\nThe previous session had these skills loaded. Consider reloading them if relevant:\n"
+		for _, s := range skills {
+			prompt += "  /" + s + "\n"
+		}
+	}
+
+	return prompt
+}
+
+func extractSkills(transcriptPath string) []string {
+	f, err := os.Open(transcriptPath)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	seen := make(map[string]bool)
+	var skills []string
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Only look at user messages — assistant messages may contain
+		// source code with <command-name> literals that aren't real skills.
+		if !strings.Contains(line, `"type":"user"`) && !strings.Contains(line, `"type": "user"`) {
+			continue
+		}
+		for {
+			start := strings.Index(line, "<command-name>/")
+			if start < 0 {
+				break
+			}
+			rest := line[start+len("<command-name>/"):]
+			end := strings.Index(rest, "</command-name>")
+			if end < 0 {
+				break
+			}
+			name := rest[:end]
+			if name != "" && !strings.ContainsAny(name, " \t\n\\\"{}()") && !seen[name] {
+				seen[name] = true
+				skills = append(skills, name)
+			}
+			line = rest[end:]
+		}
+	}
+	return skills
 }
 
 func precompact() {

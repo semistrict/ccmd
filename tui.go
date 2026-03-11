@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -724,25 +725,53 @@ var (
 			Foreground(lipgloss.Color("6"))
 	stBannerPath = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{Light: "245", Dark: "240"})
-	stBannerBar = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("4"))
 	stBannerBarDone = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("2")).
 			Bold(true)
 )
 
+const bannerTotalFrames = 50
+
+var (
+	waveChars    = []rune{' ', ' ', '·', '░', '▒', '▓', '█', '▓', '▒', '░', '·', ' ', ' '}
+	waveColors   = []lipgloss.Style{
+		lipgloss.NewStyle().Foreground(lipgloss.Color("87")), // bright cyan (center)
+		lipgloss.NewStyle().Foreground(lipgloss.Color("81")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("75")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("69")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("63")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("57")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("54")), // deep blue (edges)
+		lipgloss.NewStyle().Foreground(lipgloss.Color("53")),
+	}
+	spinnerChars = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	barGradient  = []lipgloss.Style{
+		lipgloss.NewStyle().Foreground(lipgloss.Color("17")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("18")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("19")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("20")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("21")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("27")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("33")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("39")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("45")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("51")),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("87")),
+	}
+)
+
 type bannerTickMsg time.Time
 
 type bannerModel struct {
-	path     string
-	progress int // 0-30
-	width    int
-	height   int
-	done     bool
+	path   string
+	frame  int
+	width  int
+	height int
+	done   bool
 }
 
 func bannerTick() tea.Cmd {
-	return tea.Tick(40*time.Millisecond, func(t time.Time) tea.Msg {
+	return tea.Tick(30*time.Millisecond, func(t time.Time) tea.Msg {
 		return bannerTickMsg(t)
 	})
 }
@@ -758,8 +787,8 @@ func (m bannerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case bannerTickMsg:
 		_ = msg
-		m.progress++
-		if m.progress >= 30 {
+		m.frame++
+		if m.frame >= bannerTotalFrames {
 			m.done = true
 			return m, tea.Quit
 		}
@@ -772,65 +801,131 @@ func (m bannerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m bannerModel) View() string {
-	if m.width == 0 {
+	if m.width == 0 || m.height == 0 {
 		return ""
 	}
 
+	t := float64(m.frame) / float64(bannerTotalFrames)
+	cy := m.height / 2
+	halfH := math.Max(float64(m.height/2), 1)
+
 	var b strings.Builder
+	for y := 0; y < m.height; y++ {
+		dist := math.Abs(float64(y - cy))
+		relDist := dist / halfH
+		if relDist > 1 {
+			relDist = 1
+		}
 
-	// Center vertically
-	pad := (m.height - 8) / 2
-	for i := 0; i < pad; i++ {
-		b.WriteString("\n")
+		// Central content: 7 lines (cy-3 to cy+3)
+		if y >= cy-3 && y <= cy+3 {
+			b.WriteString(m.bannerCenterLine(y-cy, t))
+		} else {
+			// Wave background — intensity fades with progress and distance from center
+			intensity := (1.0 - t*0.9) * (0.2 + 0.8*(1.0-relDist))
+			waveLine := m.bannerWaveLine(dist, t, intensity)
+
+			colorIdx := int(relDist * float64(len(waveColors)-1))
+			if colorIdx >= len(waveColors) {
+				colorIdx = len(waveColors) - 1
+			}
+			b.WriteString(waveColors[colorIdx].Render(waveLine))
+		}
+
+		if y < m.height-1 {
+			b.WriteByte('\n')
+		}
 	}
 
-	// Title
-	title := stBannerTitle.Render(" CONTEXT LIMIT REACHED ")
-	titleW := lipgloss.Width(title)
-	leftPad := (m.width - titleW) / 2
-	if leftPad < 0 {
-		leftPad = 0
-	}
-	b.WriteString(strings.Repeat(" ", leftPad) + title + "\n\n")
+	return b.String()
+}
 
-	// Progress bar
+func (m bannerModel) bannerWaveLine(dist, t, intensity float64) string {
+	line := make([]rune, m.width)
+	for x := 0; x < m.width; x++ {
+		// Dual-frequency sine wave flowing inward toward center
+		phase := float64(x)*0.12 - dist*0.4 + t*10.0
+		val := (math.Sin(phase) + math.Sin(phase*0.618+2.1)) / 2
+		val = (val + 1) / 2 * intensity
+		idx := int(val * float64(len(waveChars)-1))
+		if idx >= len(waveChars) {
+			idx = len(waveChars) - 1
+		}
+		if idx < 0 {
+			idx = 0
+		}
+		line[x] = waveChars[idx]
+	}
+	return string(line)
+}
+
+func (m bannerModel) bannerCenterLine(offset int, t float64) string {
+	switch offset {
+	case -3, -1, 1:
+		return ""
+	case -2:
+		return m.bannerCenter(stBannerTitle.Render(" CONTEXT LIMIT REACHED "))
+	case 0:
+		return m.bannerProgressLine(t)
+	case 2:
+		spinner := spinnerChars[m.frame%len(spinnerChars)]
+		if t < 0.4 {
+			return m.bannerCenter(stBannerBody.Render(spinner + " Rendering session transcript..."))
+		}
+		return m.bannerCenter(stBannerBarDone.Render(spinner + " Restarting with full context..."))
+	case 3:
+		return m.bannerCenter(stBannerPath.Render(truncate(m.path, m.width-4)))
+	}
+	return ""
+}
+
+func (m bannerModel) bannerProgressLine(t float64) string {
 	barWidth := 40
 	if barWidth > m.width-8 {
 		barWidth = m.width - 8
 	}
-	filled := m.progress * barWidth / 30
+	filled := int(t * float64(barWidth))
+	if filled > barWidth {
+		filled = barWidth
+	}
+
+	var bar strings.Builder
+	prevColor := -1
+	count := 0
+	for i := 0; i < filled; i++ {
+		colorIdx := i * (len(barGradient) - 1) / max(barWidth-1, 1)
+		if colorIdx != prevColor {
+			if count > 0 {
+				bar.WriteString(barGradient[prevColor].Render(strings.Repeat("█", count)))
+			}
+			prevColor = colorIdx
+			count = 1
+		} else {
+			count++
+		}
+	}
+	if count > 0 && prevColor >= 0 {
+		bar.WriteString(barGradient[prevColor].Render(strings.Repeat("█", count)))
+	}
 	empty := barWidth - filled
-	bar := stBannerBar.Render(strings.Repeat("█", filled)) + stDim.Render(strings.Repeat("░", empty))
-	barLeft := (m.width - barWidth) / 2
-	if barLeft < 0 {
-		barLeft = 0
+	if empty > 0 {
+		bar.WriteString(stDim.Render(strings.Repeat("░", empty)))
 	}
-	b.WriteString(strings.Repeat(" ", barLeft) + bar + "\n\n")
 
-	// Status text
-	var status string
-	if m.progress < 15 {
-		status = stBannerBody.Render("Rendering session transcript...")
-	} else {
-		status = stBannerBarDone.Render("Restarting claude with full context...")
+	pad := (m.width - barWidth) / 2
+	if pad < 0 {
+		pad = 0
 	}
-	statusW := lipgloss.Width(status)
-	statusPad := (m.width - statusW) / 2
-	if statusPad < 0 {
-		statusPad = 0
-	}
-	b.WriteString(strings.Repeat(" ", statusPad) + status + "\n\n")
+	return strings.Repeat(" ", pad) + bar.String()
+}
 
-	// Path
-	pathStr := stBannerPath.Render(truncate(m.path, m.width-4))
-	pathW := lipgloss.Width(pathStr)
-	pathPad := (m.width - pathW) / 2
-	if pathPad < 0 {
-		pathPad = 0
+func (m bannerModel) bannerCenter(s string) string {
+	w := lipgloss.Width(s)
+	pad := (m.width - w) / 2
+	if pad < 0 {
+		pad = 0
 	}
-	b.WriteString(strings.Repeat(" ", pathPad) + pathStr + "\n")
-
-	return b.String()
+	return strings.Repeat(" ", pad) + s
 }
 
 func showRestartBanner(transcriptPath string) {
@@ -838,5 +933,4 @@ func showRestartBanner(transcriptPath string) {
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	p.Run()
 }
-
 

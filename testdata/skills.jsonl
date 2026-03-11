@@ -1,0 +1,8 @@
+{"type":"user","timestamp":"2025-01-01T00:00:00Z","message":{"role":"user","content":"hello"}}
+{"type":"assistant","timestamp":"2025-01-01T00:00:01Z","message":{"role":"assistant","content":"I'll use the Skill tool."}}
+{"type":"user","timestamp":"2025-01-01T00:00:02Z","message":{"role":"user","content":"<command-message>frontend-design</command-message>\n<command-name>/frontend-design</command-name>\nDesign a landing page"}}
+{"type":"assistant","timestamp":"2025-01-01T00:00:03Z","message":{"role":"assistant","content":"Here is a function that has <command-name>/fake-skill</command-name> in its output as code"}}
+{"type":"user","timestamp":"2025-01-01T00:00:04Z","message":{"role":"user","content":"<command-message>retry</command-message>\n<command-name>/retry</command-name>"}}
+{"type":"assistant","timestamp":"2025-01-01T00:00:05Z","message":{"role":"assistant","content":"start := strings.Index(line, \"<command-name>/\")\nrest := line[start+len(\"<command-name>/\"):]\nend := strings.Index(rest, \"</command-name>\")"}}
+{"type":"user","timestamp":"2025-01-01T00:00:06Z","message":{"role":"user","content":"<command-message>frontend-design</command-message>\n<command-name>/frontend-design</command-name>\nDuplicate skill should be deduped"}}
+{"type":"user","timestamp":"2025-01-01T00:00:07Z","message":{"role":"user","content":"<command-message>cloudflare</command-message>\n<command-name>/cloudflare</command-name>\nDeploy a worker"}}
