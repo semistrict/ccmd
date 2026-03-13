@@ -1,8 +1,12 @@
 package main
 
 import (
+	"flag"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestExtractFiles(t *testing.T) {
@@ -94,5 +98,79 @@ func TestExtractFilesLast(t *testing.T) {
 	}
 	if last3[2].path != "/Users/ramon/src/ccmd/parse_test.go" {
 		t.Errorf("last3[2] = %q, want parse_test.go", last3[2].path)
+	}
+}
+
+func TestCountLines(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"", 0},
+		{"one", 1},
+		{"one\ntwo", 2},
+		{"one\ntwo\n", 2},
+	}
+	for _, tt := range tests {
+		if got := countLines(tt.input); got != tt.want {
+			t.Errorf("countLines(%q) = %d, want %d", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestPrintFileInfo(t *testing.T) {
+	out := captureStdout(t, func() {
+		printFileInfo(fileInfo{
+			path:    "/tmp/project/file.go",
+			read:    true,
+			written: true,
+			added:   3,
+			removed: 1,
+			readLen: 12,
+		}, false)
+	})
+
+	for _, want := range []string{"/tmp/project/file.go", "R 12 lines", "W +3/-1"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("printFileInfo missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestResolveSessionArg(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projectDir := filepath.Join(home, "work", "match")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	chdirForTest(t, projectDir)
+	projectFilter := cwdProjectDir()
+
+	first := filepath.Join(home, ".claude", "projects", projectFilter, "first.jsonl")
+	second := filepath.Join(home, ".claude", "projects", projectFilter, "second.jsonl")
+	parentUUID := "12345678-1234-1234-1234-123456789abc"
+	parentPath := filepath.Join(home, ".claude", "projects", projectFilter, parentUUID+".jsonl")
+	writeClaudeSessionFile(t, first, projectDir, "first", "msg1", "one")
+	writeClaudeSessionFile(t, second, projectDir, "second", "msg2", "two")
+	writeClaudeSessionFile(t, parentPath, projectDir, "parent", "msg3", "three")
+	setTestModTime(t, first, time.Date(2026, 3, 13, 9, 0, 0, 0, time.UTC))
+	setTestModTime(t, second, time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC))
+	setTestModTime(t, parentPath, time.Date(2026, 3, 13, 8, 0, 0, 0, time.UTC))
+
+	t.Setenv("CCMD_PARENT_UUID", parentUUID)
+	fs := flag.NewFlagSet("files", flag.ExitOnError)
+	if got := resolveSessionArg(fs); got != parentPath {
+		t.Fatalf("resolveSessionArg default parent = %q, want %q", got, parentPath)
+	}
+
+	t.Setenv("CCMD_PARENT_UUID", "")
+	fs = flag.NewFlagSet("files", flag.ExitOnError)
+	if err := fs.Parse([]string{"1"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveSessionArg(fs); got != second {
+		t.Fatalf("resolveSessionArg numeric = %q, want newest %q", got, second)
 	}
 }
