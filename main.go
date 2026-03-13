@@ -95,6 +95,9 @@ func main() {
 		case "diff":
 			runDiff(os.Args[2:])
 			return
+		case "search":
+			runSearch(os.Args[2:])
+			return
 		}
 	}
 
@@ -119,7 +122,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  ccmd claude ...  launch claude with fastcompact support\n")
 		fmt.Fprintf(os.Stderr, "  ccmd fastcompact render & restart the most recent session\n")
 		fmt.Fprintf(os.Stderr, "  ccmd files ...   list files read/written in a session\n")
-		fmt.Fprintf(os.Stderr, "  ccmd diff ...    show file changes (Edit/Write) in a session\n\n")
+		fmt.Fprintf(os.Stderr, "  ccmd diff ...    show file changes (Edit/Write) in a session\n")
+		fmt.Fprintf(os.Stderr, "  ccmd search ...  search a session and print matching full turns\n\n")
 		fmt.Fprintf(os.Stderr, "Session browser:\n")
 		fmt.Fprintf(os.Stderr, "  No arguments     interactive session browser (plain list if piped)\n")
 		fmt.Fprintf(os.Stderr, "  <number>         render the Nth most recent session\n")
