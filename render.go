@@ -127,6 +127,8 @@ func renderSession(path, outputFile, imagesDir string, showThinking, summary boo
 	writeMarkdown(os.Stdout, ps, showThinking, summary, fromTurn, toTurn)
 }
 
+var _ = renderSessionToString
+
 func renderSessionToString(path string) string {
 	f, err := os.Open(path)
 	if err != nil {

@@ -19,4 +19,6 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.3
       - run: make check
