@@ -11,11 +11,11 @@ import (
 )
 
 var (
-	stFileRead  = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))                              // blue
-	stFileWrite = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))                              // green
+	stFileRead  = lipgloss.NewStyle().Foreground(lipgloss.Color("4")) // blue
+	stFileWrite = lipgloss.NewStyle().Foreground(lipgloss.Color("2")) // green
 	stFilePath  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "245", Dark: "250"})
-	stFileAdd   = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))                              // green
-	stFileRm    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))                              // red
+	stFileAdd   = lipgloss.NewStyle().Foreground(lipgloss.Color("2")) // green
+	stFileRm    = lipgloss.NewStyle().Foreground(lipgloss.Color("1")) // red
 )
 
 type fileInfo struct {
@@ -52,7 +52,9 @@ func runFiles(args []string) {
 		fmt.Fprintf(os.Stderr, "List unique files read or written during a session (ordered by last access).\n\n")
 		fs.PrintDefaults()
 	}
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		os.Exit(2)
+	}
 
 	path := resolveSessionArg(fs)
 
@@ -61,7 +63,7 @@ func runFiles(args []string) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	files := extractFiles(parseRecords(f))
 

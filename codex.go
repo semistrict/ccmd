@@ -17,7 +17,7 @@ func parseCodexLines(lines [][]byte, sessionPath string) ParsedSession {
 		Type string `json:"type"`
 	}
 	if len(lines) > 0 {
-		json.Unmarshal(lines[0], &probe)
+		_ = json.Unmarshal(lines[0], &probe)
 	}
 	isNewFormat := probe.Type == "session_meta"
 
@@ -202,8 +202,8 @@ type codexOldRecord struct {
 	// local_shell_call fields
 	CallID string `json:"call_id"`
 	Action *struct {
-		Type    string   `json:"type"`
-		Command any      `json:"command"` // string or []string
+		Type    string `json:"type"`
+		Command any    `json:"command"` // string or []string
 	} `json:"action"`
 
 	// function_call_output fields
@@ -241,7 +241,8 @@ func parseCodexOld(lines [][]byte, sessionPath string) ParsedSession {
 
 		switch rec.Type {
 		case "message":
-			if rec.Role == "user" {
+			switch rec.Role {
+			case "user":
 				flushAssistant()
 				text := codexExtractText(rec.Content)
 				if text != "" {
@@ -250,7 +251,7 @@ func parseCodexOld(lines [][]byte, sessionPath string) ParsedSession {
 						Texts: []string{text},
 					})
 				}
-			} else if rec.Role == "assistant" {
+			case "assistant":
 				if currentAssistant == nil {
 					currentAssistant = &ConversationEntry{Role: "assistant"}
 				}
@@ -291,7 +292,9 @@ func scanCodexSessionInfo(path string, modTime time.Time) *SessionInfo {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
@@ -406,7 +409,9 @@ func scanCodexTokenUsage(path string) (inputTokens, outputTokens int) {
 	if err != nil {
 		return 0, 0
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
@@ -477,9 +482,10 @@ func formatCodexToolCall(name, argsJSON string) ToolCall {
 			var steps []string
 			for _, p := range args.Plan {
 				marker := "[ ]"
-				if p.Status == "completed" {
+				switch p.Status {
+				case "completed":
 					marker = "[x]"
-				} else if p.Status == "in_progress" {
+				case "in_progress":
 					marker = "[~]"
 				}
 				steps = append(steps, marker+" "+p.Step)

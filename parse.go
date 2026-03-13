@@ -244,7 +244,7 @@ func loadSubagent(sessionPath, agentID string) []ConversationEntry {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	records := parseRecords(f)
 	return buildConversation(records, agentPath, true, "")
@@ -253,7 +253,7 @@ func loadSubagent(sessionPath, agentID string) []ConversationEntry {
 func formatToolCall(b ContentBlock) ToolCall {
 	var params map[string]interface{}
 	if len(b.Input) > 0 {
-		json.Unmarshal(b.Input, &params)
+		_ = json.Unmarshal(b.Input, &params)
 	}
 	if params == nil {
 		return ToolCall{Name: b.Name}
@@ -352,7 +352,9 @@ func saveImage(dir string, src *ImageSource, num *int) string {
 		ext = ".webp"
 	}
 
-	os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return ""
+	}
 	path := filepath.Join(dir, fmt.Sprintf("image-%d%s", *num, ext))
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return ""

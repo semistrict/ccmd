@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -38,7 +39,11 @@ func startHookServer(restartCh chan<- restartInfo) string {
 	mux.HandleFunc("/posttooluse", handlePostToolUse)
 	mux.HandleFunc("/precompact", handlePrecompact(restartCh))
 
-	go http.Serve(ln, mux)
+	go func() {
+		if err := http.Serve(ln, mux); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("hook server stopped", "err", err)
+		}
+	}()
 
 	addr := ln.Addr().(*net.TCPAddr)
 	base := fmt.Sprintf("http://127.0.0.1:%d", addr.Port)
@@ -83,7 +88,9 @@ func handlePreToolUse(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("pretooluse: allow", "tool", data.ToolName)
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprint(w, `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}`)
+	if _, err := fmt.Fprint(w, `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}`); err != nil {
+		slog.Error("pretooluse: write response", "err", err)
+	}
 }
 
 func handlePostToolUse(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +120,9 @@ func handlePostToolUse(w http.ResponseWriter, r *http.Request) {
 	if tokens[0] == "cd" {
 		slog.Warn("posttooluse: cd detected", "command", data.ToolInput.Command)
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"WARNING: You just used cd to change the working directory. Avoid changing directory from the project root when possible."}}`)
+		if _, err := fmt.Fprint(w, `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"WARNING: You just used cd to change the working directory. Avoid changing directory from the project root when possible."}}`); err != nil {
+			slog.Error("posttooluse: write response", "err", err)
+		}
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -155,7 +164,9 @@ func handlePrecompact(restartCh chan<- restartInfo) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"decision":"block","reason":"Restarting with fastcompact..."}`)
+		if _, err := fmt.Fprint(w, `{"decision":"block","reason":"Restarting with fastcompact..."}`); err != nil {
+			slog.Error("precompact: write response", "err", err)
+		}
 	}
 }
 
@@ -195,7 +206,10 @@ func runClaude(args []string) {
 			cmd.Env = append(os.Environ(), "CCMD_PARENT_UUID="+parentUUID)
 		}
 
-		cmd.Start()
+		if err := cmd.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "error: start claude: %v\n", err)
+			os.Exit(1)
+		}
 
 		doneCh := make(chan error, 1)
 		go func() { doneCh <- cmd.Wait() }()
@@ -211,13 +225,19 @@ func runClaude(args []string) {
 			os.Exit(0)
 
 		case info := <-restartCh:
-			cmd.Process.Kill()
-			cmd.Wait()
+			if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				slog.Warn("restart: kill claude", "err", err)
+			}
+			if err := cmd.Wait(); err != nil {
+				slog.Debug("restart: claude exited", "err", err)
+			}
 
 			// Reset terminal
 			reset := exec.Command("stty", "sane")
 			reset.Stdin = os.Stdin
-			reset.Run()
+			if err := reset.Run(); err != nil {
+				slog.Warn("restart: reset terminal", "err", err)
+			}
 			fmt.Print("\033[?1004l") // disable focus reporting
 
 			transcriptPath := info.TranscriptPath
@@ -331,7 +351,11 @@ func extractSkills(transcriptPath string) []string {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Warn("extractSkills: close transcript", "path", transcriptPath, "err", err)
+		}
+	}()
 
 	seen := make(map[string]bool)
 	var skills []string

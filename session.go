@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -76,7 +77,7 @@ func findSessionByUUID(uuid string) string {
 // findCodexSessionByUUID walks the Codex sessions directory for a file containing the UUID.
 func findCodexSessionByUUID(root, uuid string) string {
 	var result string
-	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
@@ -85,7 +86,9 @@ func findCodexSessionByUUID(root, uuid string) string {
 			return filepath.SkipAll
 		}
 		return nil
-	})
+	}); err != nil && !errors.Is(err, filepath.SkipAll) && !os.IsNotExist(err) {
+		return ""
+	}
 	return result
 }
 
@@ -134,7 +137,7 @@ func findSessions(limit int, projectFilter string) []SessionInfo {
 
 	// Discover Codex sessions
 	codexDir := codexSessionsDir()
-	filepath.Walk(codexDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(codexDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".jsonl") {
 			return nil
 		}
@@ -168,7 +171,9 @@ func findSessions(limit int, projectFilter string) []SessionInfo {
 			return nil
 		})
 	}
-	g.Wait()
+	if err := g.Wait(); err != nil {
+		return nil
+	}
 
 	var sessions []SessionInfo
 	for _, info := range results {
@@ -202,7 +207,7 @@ func scanSessionInfo(path, projectDir string, modTime time.Time) *SessionInfo {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	project := extractProjectName(projectDir)
 	scanner := bufio.NewScanner(f)

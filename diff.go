@@ -11,9 +11,9 @@ import (
 )
 
 var (
-	stDiffFile = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4"))                      // blue
-	stDiffAdd  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))                                 // green
-	stDiffDel  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))                                 // red
+	stDiffFile = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4")) // blue
+	stDiffAdd  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))            // green
+	stDiffDel  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))            // red
 	stDiffCtx  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "245", Dark: "250"})
 )
 
@@ -48,7 +48,9 @@ func runDiff(args []string) {
 		fmt.Fprintf(os.Stderr, "Show file changes (Edit/Write) made during a session.\n\n")
 		fs.PrintDefaults()
 	}
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		os.Exit(2)
+	}
 
 	path := resolveSessionArg(fs)
 
@@ -57,7 +59,7 @@ func runDiff(args []string) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	ps := parseSessionFile(f, path, "")
 	changes := extractChanges(ps.Entries, *lastTurns)

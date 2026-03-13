@@ -57,10 +57,10 @@ type tuiModel struct {
 	showProject   bool
 	projectOnly   bool   // true when filtering to current project
 	projectFilter string // encoded cwd project dir
-	chosen       string
-	chosenCWD    string
-	chosenAction string // "", "summary", "continue", "fork"
-	copied       bool
+	chosen        string
+	chosenCWD     string
+	chosenAction  string // "", "summary", "continue", "fork"
+	copied        bool
 	filtering     bool   // true when typing in the filter input
 	filter        string // current filter text
 	formatFilter  int    // 0=all, 1=claude only, 2=codex only
@@ -119,7 +119,7 @@ func scanTokenUsage(path string) (inputTokens, outputTokens int) {
 	if err != nil {
 		return 0, 0
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
@@ -152,7 +152,7 @@ func loadSummaryCmd(index int, si SessionInfo) tea.Cmd {
 		if err != nil {
 			return summaryLoadedMsg{index: index}
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		ps := parseSessionFile(f, si.Path, "")
 
@@ -198,7 +198,7 @@ func copyToClipboard(text string) tea.Cmd {
 	return func() tea.Msg {
 		cmd := exec.Command("pbcopy")
 		cmd.Stdin = strings.NewReader(text)
-		cmd.Run()
+		_ = cmd.Run()
 		return copiedMsg{}
 	}
 }
@@ -594,8 +594,8 @@ func (m tuiModel) renderRow(i int) string {
 	}
 
 	// Column widths: cursor(2) + idx(2) + 2 + when(10) + 2 + turns(4) + 2 + [proj(16) + 2] + preview
-	const fixedWith = 2 + 2 + 2 + 10 + 2 + 4 + 2    // 24
-	const fixedWithProj = fixedWith + 16 + 2           // 42
+	const fixedWith = 2 + 2 + 2 + 10 + 2 + 4 + 2 // 24
+	const fixedWithProj = fixedWith + 16 + 2     // 42
 
 	if selected {
 		cur := "▸ "
@@ -733,8 +733,8 @@ var (
 const bannerTotalFrames = 50
 
 var (
-	waveChars    = []rune{' ', ' ', '·', '░', '▒', '▓', '█', '▓', '▒', '░', '·', ' ', ' '}
-	waveColors   = []lipgloss.Style{
+	waveChars  = []rune{' ', ' ', '·', '░', '▒', '▓', '█', '▓', '▒', '░', '·', ' ', ' '}
+	waveColors = []lipgloss.Style{
 		lipgloss.NewStyle().Foreground(lipgloss.Color("87")), // bright cyan (center)
 		lipgloss.NewStyle().Foreground(lipgloss.Color("81")),
 		lipgloss.NewStyle().Foreground(lipgloss.Color("75")),
@@ -931,6 +931,5 @@ func (m bannerModel) bannerCenter(s string) string {
 func showRestartBanner(transcriptPath string) {
 	m := bannerModel{path: transcriptPath}
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	p.Run()
+	_, _ = p.Run()
 }
-

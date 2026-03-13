@@ -26,12 +26,20 @@ func abbreviateLines(s string, n int) string {
 		b.WriteString(l)
 		b.WriteByte('\n')
 	}
-	b.WriteString(fmt.Sprintf("... (%d lines omitted)\n", len(lines)-n*2))
+	_, _ = fmt.Fprintf(&b, "... (%d lines omitted)\n", len(lines)-n*2)
 	for _, l := range lines[len(lines)-n:] {
 		b.WriteString(l)
 		b.WriteByte('\n')
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+func writef(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
+}
+
+func writeln(w io.Writer) {
+	_, _ = fmt.Fprintln(w)
 }
 
 func shortPath(p string) string {
@@ -70,7 +78,7 @@ func renderSession(path, outputFile, imagesDir string, showThinking, summary boo
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	ps := parseSessionFile(f, path, imagesDir)
 
@@ -87,7 +95,7 @@ func renderSession(path, outputFile, imagesDir string, showThinking, summary boo
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
-		defer of.Close()
+		defer func() { _ = of.Close() }()
 		writeMarkdown(of, ps, showThinking, summary, fromTurn, toTurn)
 		fmt.Fprintf(os.Stderr, "Wrote %s\n", outputFile)
 		return
@@ -105,10 +113,14 @@ func renderSession(path, outputFile, imagesDir string, showThinking, summary boo
 			return
 		}
 
-		glow.Start()
+		if err := glow.Start(); err != nil {
+			_ = glowIn.Close()
+			writeMarkdown(os.Stdout, ps, showThinking, summary, fromTurn, toTurn)
+			return
+		}
 		writeMarkdown(glowIn, ps, showThinking, summary, fromTurn, toTurn)
-		glowIn.Close()
-		glow.Wait()
+		_ = glowIn.Close()
+		_ = glow.Wait()
 		return
 	}
 
@@ -120,7 +132,7 @@ func renderSessionToString(path string) string {
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	ps := parseSessionFile(f, path, "")
 
@@ -137,23 +149,23 @@ func writeMarkdown(w io.Writer, ps ParsedSession, showThinking, summary bool, fr
 		versionLabel = "Codex"
 	}
 
-	fmt.Fprintf(w, "# %s\n\n", title)
+	writef(w, "# %s\n\n", title)
 	if !ps.StartTime.IsZero() {
-		fmt.Fprintf(w, "**Date:** %s  \n", ps.StartTime.Format("2006-01-02 15:04"))
+		writef(w, "**Date:** %s  \n", ps.StartTime.Format("2006-01-02 15:04"))
 	}
 	if ps.CWD != "" {
-		fmt.Fprintf(w, "**Project:** `%s`  \n", ps.CWD)
+		writef(w, "**Project:** `%s`  \n", ps.CWD)
 	}
 	if ps.GitBranch != "" {
-		fmt.Fprintf(w, "**Branch:** `%s`  \n", ps.GitBranch)
+		writef(w, "**Branch:** `%s`  \n", ps.GitBranch)
 	}
 	if ps.SessionID != "" {
-		fmt.Fprintf(w, "**Session:** `%s`  \n", ps.SessionID)
+		writef(w, "**Session:** `%s`  \n", ps.SessionID)
 	}
 	if ps.Version != "" {
-		fmt.Fprintf(w, "**%s:** v%s  \n", versionLabel, ps.Version)
+		writef(w, "**%s:** v%s  \n", versionLabel, ps.Version)
 	}
-	fmt.Fprintf(w, "\n---\n\n")
+	writef(w, "\n---\n\n")
 
 	writeEntries(w, ps.Entries, showThinking, summary, fromTurn, toTurn, 0)
 }
@@ -166,9 +178,9 @@ func writeEntries(w io.Writer, entries []ConversationEntry, showThinking, summar
 		// System entries (compact boundary, PR links) don't count as turns
 		if entry.Role == "system" {
 			if summary && depth == 0 {
-				fmt.Fprintf(w, "     %s\n", strings.Join(entry.Texts, " "))
+				writef(w, "     %s\n", strings.Join(entry.Texts, " "))
 			} else {
-				fmt.Fprintf(w, "%s%s\n\n", prefix, strings.Join(entry.Texts, " "))
+				writef(w, "%s%s\n\n", prefix, strings.Join(entry.Texts, " "))
 			}
 			continue
 		}
@@ -187,17 +199,17 @@ func writeEntries(w io.Writer, entries []ConversationEntry, showThinking, summar
 			case "user":
 				preview := strings.Join(entry.Texts, " ")
 				preview = strings.ReplaceAll(preview, "\n", " ")
-				fmt.Fprintf(w, "%3d  **User:** %s\n", turnNum, truncate(preview, 120))
+				writef(w, "%3d  **User:** %s\n", turnNum, truncate(preview, 120))
 			case "assistant":
 				preview := strings.Join(entry.Texts, " ")
 				preview = strings.ReplaceAll(preview, "\n", " ")
 				toolCount := len(entry.Tools)
 				if preview != "" && toolCount > 0 {
-					fmt.Fprintf(w, "%3d  **Claude:** %s (%d tools)\n", turnNum, truncate(preview, 100), toolCount)
+					writef(w, "%3d  **Claude:** %s (%d tools)\n", turnNum, truncate(preview, 100), toolCount)
 				} else if preview != "" {
-					fmt.Fprintf(w, "%3d  **Claude:** %s\n", turnNum, truncate(preview, 120))
+					writef(w, "%3d  **Claude:** %s\n", turnNum, truncate(preview, 120))
 				} else if toolCount > 0 {
-					fmt.Fprintf(w, "%3d  **Claude:** (%d tools)\n", turnNum, toolCount)
+					writef(w, "%3d  **Claude:** (%d tools)\n", turnNum, toolCount)
 				}
 			}
 			continue
@@ -206,52 +218,52 @@ func writeEntries(w io.Writer, entries []ConversationEntry, showThinking, summar
 		switch entry.Role {
 		case "user":
 			if depth == 0 {
-				fmt.Fprintf(w, "## [%d] User\n\n", turnNum)
+				writef(w, "## [%d] User\n\n", turnNum)
 			} else {
-				fmt.Fprintf(w, "%s**Prompt:**\n%s\n", prefix, prefix)
+				writef(w, "%s**Prompt:**\n%s\n", prefix, prefix)
 			}
 			for _, text := range entry.Texts {
 				for _, line := range strings.Split(text, "\n") {
-					fmt.Fprintf(w, "%s%s\n", prefix, line)
+					writef(w, "%s%s\n", prefix, line)
 				}
-				fmt.Fprintf(w, "%s\n", prefix)
+				writef(w, "%s\n", prefix)
 			}
 
 		case "assistant":
 			if depth == 0 {
-				fmt.Fprintf(w, "## [%d] Claude\n\n", turnNum)
+				writef(w, "## [%d] Claude\n\n", turnNum)
 			}
 
 			if showThinking && len(entry.Thinking) > 0 {
 				for _, t := range entry.Thinking {
 					for _, line := range strings.Split(t, "\n") {
 						if strings.TrimSpace(line) == "" {
-							fmt.Fprintf(w, "%s>\n", prefix)
+							writef(w, "%s>\n", prefix)
 						} else {
-							fmt.Fprintf(w, "%s> *%s*\n", prefix, line)
+							writef(w, "%s> *%s*\n", prefix, line)
 						}
 					}
-					fmt.Fprintln(w)
+					writeln(w)
 				}
 			}
 
 			for _, text := range entry.Texts {
 				for _, line := range strings.Split(text, "\n") {
-					fmt.Fprintf(w, "%s%s\n", prefix, line)
+					writef(w, "%s%s\n", prefix, line)
 				}
-				fmt.Fprintf(w, "%s\n", prefix)
+				writef(w, "%s\n", prefix)
 			}
 
 			if len(entry.Tools) > 0 {
 				for _, tc := range entry.Tools {
 					if tc.Plan != "" {
-						fmt.Fprintf(w, "%s### Plan\n%s\n", prefix, prefix)
+						writef(w, "%s### Plan\n%s\n", prefix, prefix)
 						for _, line := range strings.Split(tc.Plan, "\n") {
-							fmt.Fprintf(w, "%s%s\n", prefix, line)
+							writef(w, "%s%s\n", prefix, line)
 						}
-						fmt.Fprintf(w, "%s\n", prefix)
+						writef(w, "%s\n", prefix)
 					} else if tc.OldStr != "" || tc.NewStr != "" {
-						fmt.Fprintf(w, "%s> **%s** `%s`\n%s\n", prefix, tc.Name, tc.Input, prefix)
+						writef(w, "%s> **%s** `%s`\n%s\n", prefix, tc.Name, tc.Input, prefix)
 						if tc.OldStr != "" {
 							var combined strings.Builder
 							for _, line := range strings.Split(tc.OldStr, "\n") {
@@ -261,44 +273,44 @@ func writeEntries(w io.Writer, entries []ConversationEntry, showThinking, summar
 								combined.WriteString("+" + line + "\n")
 							}
 							abbrev := abbreviateLines(strings.TrimRight(combined.String(), "\n"), 5)
-							fmt.Fprintf(w, "%s```diff\n", prefix)
+							writef(w, "%s```diff\n", prefix)
 							for _, line := range strings.Split(abbrev, "\n") {
-								fmt.Fprintf(w, "%s%s\n", prefix, line)
+								writef(w, "%s%s\n", prefix, line)
 							}
-							fmt.Fprintf(w, "%s```\n%s\n", prefix, prefix)
+							writef(w, "%s```\n%s\n", prefix, prefix)
 						} else {
 							abbrev := abbreviateLines(tc.NewStr, 5)
-							fmt.Fprintf(w, "%s```\n", prefix)
+							writef(w, "%s```\n", prefix)
 							for _, line := range strings.Split(abbrev, "\n") {
-								fmt.Fprintf(w, "%s%s\n", prefix, line)
+								writef(w, "%s%s\n", prefix, line)
 							}
-							fmt.Fprintf(w, "%s```\n%s\n", prefix, prefix)
+							writef(w, "%s```\n%s\n", prefix, prefix)
 						}
 					} else if tc.Input != "" {
 						if tc.Meta != "" {
-							fmt.Fprintf(w, "%s> **%s** `%s` *(%s)*\n", prefix, tc.Name, tc.Input, tc.Meta)
+							writef(w, "%s> **%s** `%s` *(%s)*\n", prefix, tc.Name, tc.Input, tc.Meta)
 						} else {
-							fmt.Fprintf(w, "%s> **%s** `%s`\n", prefix, tc.Name, tc.Input)
+							writef(w, "%s> **%s** `%s`\n", prefix, tc.Name, tc.Input)
 						}
 					} else {
-						fmt.Fprintf(w, "%s> **%s**\n", prefix, tc.Name)
+						writef(w, "%s> **%s**\n", prefix, tc.Name)
 					}
 					if tc.Error != "" {
-						fmt.Fprintf(w, "%s>\n", prefix)
+						writef(w, "%s>\n", prefix)
 						for _, line := range strings.Split(tc.Error, "\n") {
-							fmt.Fprintf(w, "%s> **⚠** %s\n", prefix, line)
+							writef(w, "%s> **⚠** %s\n", prefix, line)
 						}
 					}
 					if len(tc.SubConversation) > 0 {
-						fmt.Fprintf(w, "%s\n", prefix)
+						writef(w, "%s\n", prefix)
 						writeEntries(w, tc.SubConversation, showThinking, false, 0, 0, depth+1)
 					}
 				}
-				fmt.Fprintln(w)
+				writeln(w)
 			}
 		}
 		if depth == 0 {
-			fmt.Fprintf(w, "---\n\n")
+			writef(w, "---\n\n")
 		}
 	}
 }
