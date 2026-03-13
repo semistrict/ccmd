@@ -147,6 +147,9 @@ func writeMarkdown(w io.Writer, ps ParsedSession, showThinking, summary bool, fr
 	if ps.GitBranch != "" {
 		fmt.Fprintf(w, "**Branch:** `%s`  \n", ps.GitBranch)
 	}
+	if ps.SessionID != "" {
+		fmt.Fprintf(w, "**Session:** `%s`  \n", ps.SessionID)
+	}
 	if ps.Version != "" {
 		fmt.Fprintf(w, "**%s:** v%s  \n", versionLabel, ps.Version)
 	}

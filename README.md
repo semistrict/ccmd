@@ -85,8 +85,8 @@ Can also be triggered interactively:
 ## How fastcompact works
 
 1. The `UserPromptSubmit` hook intercepts the word `fastcompact` typed as a prompt and blocks it
-2. The hook signals the parent `ccmd claude` process via SIGUSR1
-3. `ccmd` kills the Claude Code child process
+2. The hook sends an HTTP request to the parent `ccmd claude` process, which signals its main loop to restart
+3. `ccmd` kills the Claude Code child process and resets the terminal
 4. A new Claude Code instance starts with a prompt referencing the previous session's transcript
 
 ## Output format
