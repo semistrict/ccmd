@@ -21,6 +21,7 @@ import (
 type restartInfo struct {
 	SessionID      string
 	TranscriptPath string
+	UserMessage    string // extra instructions typed after "fastcompact"
 }
 
 // startHookServer starts an HTTP server for all hooks.
@@ -136,17 +137,21 @@ func handlePrecompact(restartCh chan<- restartInfo) http.HandlerFunc {
 			return
 		}
 
-		if strings.TrimSpace(data.Prompt) != "fastcompact" {
+		trimmed := strings.TrimSpace(data.Prompt)
+		if trimmed != "fastcompact" && !strings.HasPrefix(trimmed, "fastcompact ") {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
-		slog.Info("precompact: fastcompact triggered", "session", data.SessionID)
+		userMessage := strings.TrimSpace(strings.TrimPrefix(trimmed, "fastcompact"))
+
+		slog.Info("precompact: fastcompact triggered", "session", data.SessionID, "userMessage", userMessage)
 
 		// Signal the main loop to restart
 		restartCh <- restartInfo{
 			SessionID:      data.SessionID,
 			TranscriptPath: data.TranscriptPath,
+			UserMessage:    userMessage,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -226,7 +231,7 @@ func runClaude(args []string) {
 			showRestartBanner(transcriptPath)
 			parentUUID = extractUUID(transcriptPath)
 			skills := extractSkills(transcriptPath)
-			args = buildFastcompactArgs(parentUUID, skills, settingsJSON)
+			args = buildFastcompactArgs(parentUUID, skills, settingsJSON, info.UserMessage)
 		}
 	}
 }
@@ -267,7 +272,7 @@ func fastcompact(args []string) {
 	}
 
 	skills := extractSkills(arg)
-	prompt := fastcompactPrompt(os.Args[0], uuid, skills)
+	prompt := fastcompactPrompt(os.Args[0], uuid, skills, "")
 
 	env := append(os.Environ(), "CCMD_PARENT_UUID="+uuid)
 	err = syscall.Exec(claudePath, []string{"claude", prompt}, env)
@@ -277,8 +282,8 @@ func fastcompact(args []string) {
 	}
 }
 
-func buildFastcompactArgs(parentUUID string, skills []string, settingsJSON string) []string {
-	prompt := fastcompactPrompt(os.Args[0], parentUUID, skills)
+func buildFastcompactArgs(parentUUID string, skills []string, settingsJSON, userMessage string) []string {
+	prompt := fastcompactPrompt(os.Args[0], parentUUID, skills, userMessage)
 	return []string{"--settings", settingsJSON, prompt}
 }
 
@@ -286,7 +291,7 @@ func extractUUID(transcriptPath string) string {
 	return sessionUUID(transcriptPath)
 }
 
-func fastcompactPrompt(ccmdBin, parentUUID string, skills []string) string {
+func fastcompactPrompt(ccmdBin, parentUUID string, skills []string, userMessage string) string {
 	prompt := "This session is being continued from a previous conversation that ran out of context. " +
 		"To get the full conversation history, run: " + ccmdBin + "\n" +
 		"Parent session UUID: " + parentUUID + "\n\n" +
@@ -299,7 +304,9 @@ func fastcompactPrompt(ccmdBin, parentUUID string, skills []string) string {
 		"  " + ccmdBin + " files          # list all files read/written\n" +
 		"  " + ccmdBin + " files -last 20 # list last 20 files\n" +
 		"  " + ccmdBin + " diff           # show all file changes (Edit/Write)\n" +
-		"  " + ccmdBin + " diff -last 5   # show changes from last 5 turns\n\n" +
+		"  " + ccmdBin + " diff -last 5   # show changes from last 5 turns\n" +
+		"  " + ccmdBin + " search \"REGEX\"   # print every full turn matching REGEX\n" +
+		"  " + ccmdBin + " search \"TODO\"    # find turns mentioning TODO\n\n" +
 		"Read the output to understand what was being worked on, then continue the conversation from where it left off without asking the user any further questions. " +
 		"Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with \"I'll continue\" or similar. " +
 		"Pick up the last task as if the break never happened."
@@ -309,6 +316,11 @@ func fastcompactPrompt(ccmdBin, parentUUID string, skills []string) string {
 		for _, s := range skills {
 			prompt += "  /" + s + "\n"
 		}
+	}
+
+	if userMessage != "" {
+		prompt += "\n\nThe user included these instructions after requesting the context restart. " +
+			"After you have come up to speed on the previous session, continue with:\n" + userMessage
 	}
 
 	return prompt
