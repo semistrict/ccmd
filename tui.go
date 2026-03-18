@@ -80,6 +80,21 @@ func sessionUUID(path string) string {
 	return base
 }
 
+func launchArgs(format SessionFormat, action, uuid string) []string {
+	if format == FormatCodex {
+		if action == "fork" {
+			return []string{"fork", uuid}
+		}
+		return []string{"resume", uuid}
+	}
+
+	args := []string{"--resume", uuid}
+	if action == "fork" {
+		args = append(args, "--fork-session")
+	}
+	return args
+}
+
 func relativeTime(t time.Time) string {
 	d := time.Since(t)
 	switch {
@@ -620,7 +635,7 @@ func (m tuiModel) renderRow(i int) string {
 
 	// Column widths: cursor(2) + idx(2) + 2 + when(10) + 2 + turns(4) + 2 + agent(6) + 2 + [proj(16) + 2] + preview
 	const fixedWith = 2 + 2 + 2 + 10 + 2 + 4 + 2 + 6 + 2 // 32
-	const fixedWithProj = fixedWith + 16 + 2               // 50
+	const fixedWithProj = fixedWith + 16 + 2             // 50
 
 	if selected {
 		cur := "▸ "
@@ -727,14 +742,9 @@ func runTUI(n int, showThinking bool, fromTurn, toTurn int) {
 
 		uuid := sessionUUID(final.chosen)
 		if final.chosenFormat == FormatCodex {
-			args := []string{"--resume", uuid}
-			runCodex(args)
+			runCodex(launchArgs(final.chosenFormat, final.chosenAction, uuid))
 		} else {
-			args := []string{"--resume", uuid}
-			if final.chosenAction == "fork" {
-				args = append(args, "--fork-session")
-			}
-			runClaude(args)
+			runClaude(launchArgs(final.chosenFormat, final.chosenAction, uuid))
 		}
 
 	case "summary":

@@ -46,3 +46,47 @@ func TestSessionUUID(t *testing.T) {
 		assert.Equal(t, tt.want, got, "sessionUUID(%q)", tt.input)
 	}
 }
+
+func TestLaunchArgs(t *testing.T) {
+	tests := []struct {
+		name   string
+		format SessionFormat
+		action string
+		uuid   string
+		want   []string
+	}{
+		{
+			name:   "claude continue",
+			format: FormatClaudeCode,
+			action: "continue",
+			uuid:   "abc",
+			want:   []string{"--resume", "abc"},
+		},
+		{
+			name:   "claude fork",
+			format: FormatClaudeCode,
+			action: "fork",
+			uuid:   "abc",
+			want:   []string{"--resume", "abc", "--fork-session"},
+		},
+		{
+			name:   "codex continue",
+			format: FormatCodex,
+			action: "continue",
+			uuid:   "abc",
+			want:   []string{"resume", "abc"},
+		},
+		{
+			name:   "codex fork",
+			format: FormatCodex,
+			action: "fork",
+			uuid:   "abc",
+			want:   []string{"fork", "abc"},
+		},
+	}
+
+	for _, tt := range tests {
+		got := launchArgs(tt.format, tt.action, tt.uuid)
+		assert.Equal(t, tt.want, got, tt.name)
+	}
+}
