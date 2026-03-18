@@ -86,6 +86,9 @@ func main() {
 		case "claude":
 			runClaude(os.Args[2:])
 			return
+		case "codex":
+			runCodex(os.Args[2:])
+			return
 		case "fastcompact":
 			fastcompact(os.Args[2:])
 			return
@@ -120,6 +123,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Parse Claude Code JSONL session files into Markdown.\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
 		fmt.Fprintf(os.Stderr, "  ccmd claude ...  launch claude with fastcompact support\n")
+		fmt.Fprintf(os.Stderr, "  ccmd codex ...   launch codex (full auto)\n")
 		fmt.Fprintf(os.Stderr, "  ccmd fastcompact render & restart the most recent session\n")
 		fmt.Fprintf(os.Stderr, "  ccmd files ...   list files read/written in a session\n")
 		fmt.Fprintf(os.Stderr, "  ccmd diff ...    show file changes (Edit/Write) in a session\n")

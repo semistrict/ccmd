@@ -3,14 +3,14 @@ package main
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRelativeTime(t *testing.T) {
 	// Just test that it doesn't panic on zero value
 	got := relativeTime(time.Time{})
-	if got == "" {
-		t.Error("relativeTime should return something for zero time")
-	}
+	assert.NotEmpty(t, got)
 }
 
 func TestFormatTokens(t *testing.T) {
@@ -28,9 +28,7 @@ func TestFormatTokens(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := formatTokens(tt.input)
-		if got != tt.want {
-			t.Errorf("formatTokens(%d) = %q, want %q", tt.input, got, tt.want)
-		}
+		assert.Equal(t, tt.want, got, "formatTokens(%d)", tt.input)
 	}
 }
 
@@ -45,8 +43,6 @@ func TestSessionUUID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := sessionUUID(tt.input)
-		if got != tt.want {
-			t.Errorf("sessionUUID(%q) = %q, want %q", tt.input, got, tt.want)
-		}
+		assert.Equal(t, tt.want, got, "sessionUUID(%q)", tt.input)
 	}
 }

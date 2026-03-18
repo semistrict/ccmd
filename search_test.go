@@ -8,6 +8,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFindMatchingTurnsMatchesFullTurnNumbers(t *testing.T) {
@@ -19,15 +22,9 @@ func TestFindMatchingTurnsMatchesFullTurnNumbers(t *testing.T) {
 	}
 
 	matches := findMatchingTurns(entries, regexp.MustCompile("needle"))
-	if len(matches) != 1 {
-		t.Fatalf("expected 1 match, got %d", len(matches))
-	}
-	if matches[0].Number != 3 {
-		t.Fatalf("match number = %d, want 3", matches[0].Number)
-	}
-	if got := strings.Join(matches[0].Entry.Texts, "\n"); got != "needle here" {
-		t.Fatalf("match text = %q, want %q", got, "needle here")
-	}
+	require.Len(t, matches, 1)
+	assert.Equal(t, 3, matches[0].Number)
+	assert.Equal(t, "needle here", strings.Join(matches[0].Entry.Texts, "\n"))
 }
 
 func TestFindMatchingTurnsMatchesAssistantToolsAndSubagents(t *testing.T) {
@@ -48,12 +45,8 @@ func TestFindMatchingTurnsMatchesAssistantToolsAndSubagents(t *testing.T) {
 	}
 
 	matches := findMatchingTurns(entries, regexp.MustCompile("needle"))
-	if len(matches) != 1 {
-		t.Fatalf("expected 1 match, got %d", len(matches))
-	}
-	if matches[0].Number != 2 {
-		t.Fatalf("match number = %d, want 2", matches[0].Number)
-	}
+	require.Len(t, matches, 1)
+	assert.Equal(t, 2, matches[0].Number)
 }
 
 func TestRenderMatchedTurnsPrintsFullTurns(t *testing.T) {
@@ -90,9 +83,7 @@ func TestRenderMatchedTurnsPrintsFullTurns(t *testing.T) {
 		"## [4] User",
 		"another match",
 	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("output missing %q:\n%s", want, out)
-		}
+		assert.Contains(t, out, want)
 	}
 }
 
@@ -123,22 +114,18 @@ func TestWriteSearchToolCoversBranches(t *testing.T) {
 		"> nested prompt",
 		"> nested answer",
 	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("writeSearchTool output missing %q:\n%s", want, out)
-		}
+		assert.Contains(t, out, want)
 	}
 
 	buf.Reset()
 	writeSearchTool(&buf, ToolCall{Name: "Plan", Plan: "[x] done"}, false, 0)
-	if out := buf.String(); !strings.Contains(out, "### Plan") || !strings.Contains(out, "[x] done") {
-		t.Fatalf("plan output missing content:\n%s", out)
-	}
+	out = buf.String()
+	assert.Contains(t, out, "### Plan")
+	assert.Contains(t, out, "[x] done")
 
 	buf.Reset()
 	writeSearchTool(&buf, ToolCall{Name: "Read", Input: "file.go", Meta: "12 lines"}, false, 0)
-	if out := buf.String(); !strings.Contains(out, "> **Read** `file.go` *(12 lines)*") {
-		t.Fatalf("meta output missing content:\n%s", out)
-	}
+	assert.Contains(t, buf.String(), "> **Read** `file.go` *(12 lines)*")
 }
 
 func TestResolveSearchSessionArg(t *testing.T) {
@@ -146,9 +133,7 @@ func TestResolveSearchSessionArg(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	projectDir := filepath.Join(home, "work", "match")
-	if err := os.MkdirAll(projectDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
 	chdirForTest(t, projectDir)
 	projectFilter := cwdProjectDir()
 
@@ -156,20 +141,12 @@ func TestResolveSearchSessionArg(t *testing.T) {
 	writeClaudeSessionFile(t, sessionPath, projectDir, "hello", "msg1", "hi")
 
 	fs := flag.NewFlagSet("search", flag.ExitOnError)
-	if err := fs.Parse([]string{"needle"}); err != nil {
-		t.Fatal(err)
-	}
-	if got := resolveSearchSessionArg(fs); got != sessionPath {
-		t.Fatalf("default resolveSearchSessionArg = %q, want %q", got, sessionPath)
-	}
+	require.NoError(t, fs.Parse([]string{"needle"}))
+	assert.Equal(t, sessionPath, resolveSearchSessionArg(fs))
 
 	fs = flag.NewFlagSet("search", flag.ExitOnError)
 	explicit := filepath.Join(home, "explicit.jsonl")
 	writeClaudeSessionFile(t, explicit, projectDir, "hello", "msg2", "hi")
-	if err := fs.Parse([]string{"needle", explicit}); err != nil {
-		t.Fatal(err)
-	}
-	if got := resolveSearchSessionArg(fs); got != explicit {
-		t.Fatalf("explicit resolveSearchSessionArg = %q, want %q", got, explicit)
-	}
+	require.NoError(t, fs.Parse([]string{"needle", explicit}))
+	assert.Equal(t, explicit, resolveSearchSessionArg(fs))
 }

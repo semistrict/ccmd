@@ -25,6 +25,7 @@ var (
 	stAsst     = lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Bold(true)
 	stTokens   = lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow
 	stKey      = lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Bold(true)
+	stAgent    = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 )
 
 type summaryLine struct {
@@ -59,6 +60,7 @@ type tuiModel struct {
 	projectFilter string // encoded cwd project dir
 	chosen        string
 	chosenCWD     string
+	chosenFormat  SessionFormat
 	chosenAction  string // "", "summary", "continue", "fork"
 	copied        bool
 	filtering     bool   // true when typing in the filter input
@@ -217,9 +219,16 @@ func (m *tuiModel) applyFilter() tea.Cmd {
 	if m.projectOnly && m.projectFilter != "" {
 		var filtered []SessionInfo
 		for _, s := range m.sessions {
-			projDir := filepath.Base(filepath.Dir(s.Path))
-			if projDir == m.projectFilter {
-				filtered = append(filtered, s)
+			if s.Format == FormatCodex {
+				// Match Codex sessions by CWD-derived project dir
+				if strings.ReplaceAll(s.CWD, "/", "-") == m.projectFilter {
+					filtered = append(filtered, s)
+				}
+			} else {
+				projDir := filepath.Base(filepath.Dir(s.Path))
+				if projDir == m.projectFilter {
+					filtered = append(filtered, s)
+				}
 			}
 		}
 		m.sessions = filtered
@@ -371,28 +380,36 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			if len(m.sessions) > 0 {
-				m.chosen = m.sessions[m.cursor].Path
-				m.chosenCWD = m.sessions[m.cursor].CWD
+				s := m.sessions[m.cursor]
+				m.chosen = s.Path
+				m.chosenCWD = s.CWD
+				m.chosenFormat = s.Format
 				return m, tea.Quit
 			}
 		case "s":
 			if len(m.sessions) > 0 {
-				m.chosen = m.sessions[m.cursor].Path
-				m.chosenCWD = m.sessions[m.cursor].CWD
+				s := m.sessions[m.cursor]
+				m.chosen = s.Path
+				m.chosenCWD = s.CWD
+				m.chosenFormat = s.Format
 				m.chosenAction = "summary"
 				return m, tea.Quit
 			}
 		case "c":
 			if len(m.sessions) > 0 {
-				m.chosen = m.sessions[m.cursor].Path
-				m.chosenCWD = m.sessions[m.cursor].CWD
+				s := m.sessions[m.cursor]
+				m.chosen = s.Path
+				m.chosenCWD = s.CWD
+				m.chosenFormat = s.Format
 				m.chosenAction = "continue"
 				return m, tea.Quit
 			}
 		case "f":
 			if len(m.sessions) > 0 {
-				m.chosen = m.sessions[m.cursor].Path
-				m.chosenCWD = m.sessions[m.cursor].CWD
+				s := m.sessions[m.cursor]
+				m.chosen = s.Path
+				m.chosenCWD = s.CWD
+				m.chosenFormat = s.Format
 				m.chosenAction = "fork"
 				return m, tea.Quit
 			}
@@ -581,6 +598,13 @@ func (m tuiModel) View() string {
 	return b.String()
 }
 
+func agentLabel(f SessionFormat) string {
+	if f == FormatCodex {
+		return "codex"
+	}
+	return "claude"
+}
+
 func (m tuiModel) renderRow(i int) string {
 	s := m.sessions[i]
 	selected := i == m.cursor
@@ -588,14 +612,15 @@ func (m tuiModel) renderRow(i int) string {
 	idx := fmt.Sprintf("%2d", i+1)
 	when := fmt.Sprintf("%-10s", relativeTime(s.Timestamp))
 	turns := fmt.Sprintf("%3dt", s.Turns)
+	agent := fmt.Sprintf("%-6s", agentLabel(s.Format))
 	preview := strings.ReplaceAll(s.Preview, "\n", " ")
 	for strings.Contains(preview, "  ") {
 		preview = strings.ReplaceAll(preview, "  ", " ")
 	}
 
-	// Column widths: cursor(2) + idx(2) + 2 + when(10) + 2 + turns(4) + 2 + [proj(16) + 2] + preview
-	const fixedWith = 2 + 2 + 2 + 10 + 2 + 4 + 2 // 24
-	const fixedWithProj = fixedWith + 16 + 2     // 42
+	// Column widths: cursor(2) + idx(2) + 2 + when(10) + 2 + turns(4) + 2 + agent(6) + 2 + [proj(16) + 2] + preview
+	const fixedWith = 2 + 2 + 2 + 10 + 2 + 4 + 2 + 6 + 2 // 32
+	const fixedWithProj = fixedWith + 16 + 2               // 50
 
 	if selected {
 		cur := "▸ "
@@ -603,10 +628,10 @@ func (m tuiModel) renderRow(i int) string {
 		if m.showProject {
 			proj := fmt.Sprintf("%-16s", truncate(s.Project, 16))
 			pw := max(m.width-fixedWithProj, 10)
-			row = fmt.Sprintf("%s%s  %s  %s  %s  %s", cur, idx, when, turns, proj, truncate(preview, pw))
+			row = fmt.Sprintf("%s%s  %s  %s  %s  %s  %s", cur, idx, when, turns, agent, proj, truncate(preview, pw))
 		} else {
 			pw := max(m.width-fixedWith, 10)
-			row = fmt.Sprintf("%s%s  %s  %s  %s", cur, idx, when, turns, truncate(preview, pw))
+			row = fmt.Sprintf("%s%s  %s  %s  %s  %s", cur, idx, when, turns, agent, truncate(preview, pw))
 		}
 		for len(row) < m.width {
 			row += " "
@@ -617,16 +642,17 @@ func (m tuiModel) renderRow(i int) string {
 	idxStr := stDim.Render(idx)
 	whenStr := stTime.Render(when)
 	turnsStr := stDim.Render(turns)
+	agentStr := stAgent.Render(agent)
 
 	if m.showProject {
 		proj := truncate(s.Project, 16)
 		projStr := stProject.Render(fmt.Sprintf("%-16s", proj))
 		pw := max(m.width-fixedWithProj, 10)
-		return "  " + idxStr + "  " + whenStr + "  " + turnsStr + "  " + projStr + "  " + truncate(preview, pw)
+		return "  " + idxStr + "  " + whenStr + "  " + turnsStr + "  " + agentStr + "  " + projStr + "  " + truncate(preview, pw)
 	}
 
 	pw := max(m.width-fixedWith, 10)
-	return "  " + idxStr + "  " + whenStr + "  " + turnsStr + "  " + truncate(preview, pw)
+	return "  " + idxStr + "  " + whenStr + "  " + turnsStr + "  " + agentStr + "  " + truncate(preview, pw)
 }
 
 func (m tuiModel) renderSummaryLine(sl summaryLine) string {
@@ -665,7 +691,7 @@ func runTUI(n int, showThinking bool, fromTurn, toTurn int) {
 		showProject:   false,
 		projectOnly:   true,
 		projectFilter: projectFilter,
-		formatFilter:  1, // claude only by default
+		formatFilter:  0, // show all formats by default
 		summaryFor:    -1,
 	}
 	m.applyFilter()
@@ -700,11 +726,16 @@ func runTUI(n int, showThinking bool, fromTurn, toTurn int) {
 		}
 
 		uuid := sessionUUID(final.chosen)
-		args := []string{"--resume", uuid}
-		if final.chosenAction == "fork" {
-			args = append(args, "--fork-session")
+		if final.chosenFormat == FormatCodex {
+			args := []string{"--resume", uuid}
+			runCodex(args)
+		} else {
+			args := []string{"--resume", uuid}
+			if final.chosenAction == "fork" {
+				args = append(args, "--fork-session")
+			}
+			runClaude(args)
 		}
-		runClaude(args)
 
 	case "summary":
 		renderSession(final.chosen, "", "", showThinking, true, fromTurn, toTurn, 0)

@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -561,4 +563,27 @@ func mergeEntries(raw []ConversationEntry) []ConversationEntry {
 		}
 	}
 	return entries
+}
+
+func runCodex(args []string) {
+	codexPath, err := exec.LookPath("codex")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: codex not found in PATH\n")
+		os.Exit(1)
+	}
+
+	args = append([]string{"--dangerously-bypass-approvals-and-sandbox"}, args...)
+
+	cmd := exec.Command(codexPath, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			os.Exit(exitErr.ExitCode())
+		}
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
 }

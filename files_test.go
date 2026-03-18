@@ -4,34 +4,27 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtractFiles(t *testing.T) {
 	f, err := os.Open("testdata/session.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
 
 	files := extractFiles(parseRecords(f))
 
-	if len(files) != 11 {
-		t.Fatalf("expected 11 files, got %d", len(files))
-	}
+	require.Len(t, files, 11)
 
 	// First file: types.go, read only
-	if files[0].path != "/Users/ramon/src/ccmd/types.go" {
-		t.Errorf("files[0].path = %q", files[0].path)
-	}
-	if !files[0].read || files[0].written {
-		t.Errorf("files[0]: read=%v written=%v, want read=true written=false", files[0].read, files[0].written)
-	}
-	if files[0].readLen != 82 {
-		t.Errorf("files[0].readLen = %d, want 82", files[0].readLen)
-	}
+	assert.Equal(t, "/Users/ramon/src/ccmd/types.go", files[0].path)
+	assert.True(t, files[0].read)
+	assert.False(t, files[0].written)
+	assert.Equal(t, 82, files[0].readLen)
 
 	// claude.go: read + edited
 	var claude *fileInfo
@@ -41,15 +34,11 @@ func TestExtractFiles(t *testing.T) {
 			break
 		}
 	}
-	if claude == nil {
-		t.Fatal("claude.go not found in files")
-	}
-	if !claude.read || !claude.written {
-		t.Errorf("claude.go: read=%v written=%v, want both true", claude.read, claude.written)
-	}
-	if claude.added != 4 || claude.removed != 5 {
-		t.Errorf("claude.go: added=%d removed=%d, want 4/5", claude.added, claude.removed)
-	}
+	require.NotNil(t, claude)
+	assert.True(t, claude.read)
+	assert.True(t, claude.written)
+	assert.Equal(t, 4, claude.added)
+	assert.Equal(t, 5, claude.removed)
 
 	// files.go: read + written (Write tool)
 	var filesGo *fileInfo
@@ -59,46 +48,30 @@ func TestExtractFiles(t *testing.T) {
 			break
 		}
 	}
-	if filesGo == nil {
-		t.Fatal("files.go not found in files")
-	}
-	if !filesGo.read || !filesGo.written {
-		t.Errorf("files.go: read=%v written=%v, want both true", filesGo.read, filesGo.written)
-	}
+	require.NotNil(t, filesGo)
+	assert.True(t, filesGo.read)
+	assert.True(t, filesGo.written)
 
 	// Last file should be parse_test.go (read only)
 	last := files[len(files)-1]
-	if last.path != "/Users/ramon/src/ccmd/parse_test.go" {
-		t.Errorf("last file = %q, want parse_test.go", last.path)
-	}
-	if !last.read || last.written {
-		t.Errorf("last file: read=%v written=%v, want read=true written=false", last.read, last.written)
-	}
+	assert.Equal(t, "/Users/ramon/src/ccmd/parse_test.go", last.path)
+	assert.True(t, last.read)
+	assert.False(t, last.written)
 }
 
 func TestExtractFilesLast(t *testing.T) {
 	f, err := os.Open("testdata/session.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
 
 	files := extractFiles(parseRecords(f))
 
 	// Simulate -last 3
 	last3 := files[len(files)-3:]
-	if len(last3) != 3 {
-		t.Fatalf("expected 3, got %d", len(last3))
-	}
-	if last3[0].path != "/Users/ramon/src/ccmd/main.go" {
-		t.Errorf("last3[0] = %q, want main.go", last3[0].path)
-	}
-	if last3[1].path != "/Users/ramon/src/ccmd/files.go" {
-		t.Errorf("last3[1] = %q, want files.go", last3[1].path)
-	}
-	if last3[2].path != "/Users/ramon/src/ccmd/parse_test.go" {
-		t.Errorf("last3[2] = %q, want parse_test.go", last3[2].path)
-	}
+	require.Len(t, last3, 3)
+	assert.Equal(t, "/Users/ramon/src/ccmd/main.go", last3[0].path)
+	assert.Equal(t, "/Users/ramon/src/ccmd/files.go", last3[1].path)
+	assert.Equal(t, "/Users/ramon/src/ccmd/parse_test.go", last3[2].path)
 }
 
 func TestCountLines(t *testing.T) {
@@ -112,9 +85,7 @@ func TestCountLines(t *testing.T) {
 		{"one\ntwo\n", 2},
 	}
 	for _, tt := range tests {
-		if got := countLines(tt.input); got != tt.want {
-			t.Errorf("countLines(%q) = %d, want %d", tt.input, got, tt.want)
-		}
+		assert.Equal(t, tt.want, countLines(tt.input), "countLines(%q)", tt.input)
 	}
 }
 
@@ -131,9 +102,7 @@ func TestPrintFileInfo(t *testing.T) {
 	})
 
 	for _, want := range []string{"/tmp/project/file.go", "R 12 lines", "W +3/-1"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("printFileInfo missing %q:\n%s", want, out)
-		}
+		assert.Contains(t, out, want)
 	}
 }
 
@@ -142,9 +111,7 @@ func TestResolveSessionArg(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	projectDir := filepath.Join(home, "work", "match")
-	if err := os.MkdirAll(projectDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
 	chdirForTest(t, projectDir)
 	projectFilter := cwdProjectDir()
 
@@ -161,16 +128,10 @@ func TestResolveSessionArg(t *testing.T) {
 
 	t.Setenv("CCMD_PARENT_UUID", parentUUID)
 	fs := flag.NewFlagSet("files", flag.ExitOnError)
-	if got := resolveSessionArg(fs); got != parentPath {
-		t.Fatalf("resolveSessionArg default parent = %q, want %q", got, parentPath)
-	}
+	assert.Equal(t, parentPath, resolveSessionArg(fs))
 
 	t.Setenv("CCMD_PARENT_UUID", "")
 	fs = flag.NewFlagSet("files", flag.ExitOnError)
-	if err := fs.Parse([]string{"1"}); err != nil {
-		t.Fatal(err)
-	}
-	if got := resolveSessionArg(fs); got != second {
-		t.Fatalf("resolveSessionArg numeric = %q, want newest %q", got, second)
-	}
+	require.NoError(t, fs.Parse([]string{"1"}))
+	assert.Equal(t, second, resolveSessionArg(fs))
 }

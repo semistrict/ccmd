@@ -3,6 +3,9 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseCodexNew(t *testing.T) {
@@ -17,60 +20,35 @@ func TestParseCodexNew(t *testing.T) {
 `
 	ps := parseSessionFile(strings.NewReader(input), "/tmp/test.jsonl", "")
 
-	if ps.Format != FormatCodex {
-		t.Errorf("expected FormatCodex, got %d", ps.Format)
-	}
-	if ps.CWD != "/Users/ramon/src/codex/codex-rs" {
-		t.Errorf("CWD = %q, want /Users/ramon/src/codex/codex-rs", ps.CWD)
-	}
-	if ps.GitBranch != "main" {
-		t.Errorf("GitBranch = %q, want main", ps.GitBranch)
-	}
-	if ps.SessionID != "019cd60b-7fe1-7223-a1c0-6f0edbb837fc" {
-		t.Errorf("SessionID = %q", ps.SessionID)
-	}
-	if ps.Version != "0.1.0" {
-		t.Errorf("Version = %q, want 0.1.0", ps.Version)
-	}
+	assert.Equal(t, FormatCodex, ps.Format)
+	assert.Equal(t, "/Users/ramon/src/codex/codex-rs", ps.CWD)
+	assert.Equal(t, "main", ps.GitBranch)
+	assert.Equal(t, "019cd60b-7fe1-7223-a1c0-6f0edbb837fc", ps.SessionID)
+	assert.Equal(t, "0.1.0", ps.Version)
 
-	if len(ps.Entries) != 4 {
-		t.Fatalf("expected 4 entries, got %d", len(ps.Entries))
-	}
+	require.Len(t, ps.Entries, 4)
 
 	// Entry 0: user
-	if ps.Entries[0].Role != "user" {
-		t.Errorf("entry 0 role = %q, want user", ps.Entries[0].Role)
-	}
-	if ps.Entries[0].Texts[0] != "what is file_based compact ?" {
-		t.Errorf("entry 0 text = %q", ps.Entries[0].Texts[0])
-	}
+	assert.Equal(t, "user", ps.Entries[0].Role)
+	require.NotEmpty(t, ps.Entries[0].Texts)
+	assert.Equal(t, "what is file_based compact ?", ps.Entries[0].Texts[0])
 
 	// Entry 1: assistant with text + tool
-	if ps.Entries[1].Role != "assistant" {
-		t.Errorf("entry 1 role = %q, want assistant", ps.Entries[1].Role)
-	}
-	if len(ps.Entries[1].Texts) != 2 {
-		t.Errorf("entry 1 texts = %d, want 2", len(ps.Entries[1].Texts))
-	}
-	if len(ps.Entries[1].Tools) != 1 {
-		t.Errorf("entry 1 tools = %d, want 1", len(ps.Entries[1].Tools))
-	}
-	if ps.Entries[1].Tools[0].Name != "Bash" {
-		t.Errorf("entry 1 tool name = %q, want Bash", ps.Entries[1].Tools[0].Name)
-	}
-	if ps.Entries[1].Tools[0].Input != "rg -n compact ." {
-		t.Errorf("entry 1 tool input = %q", ps.Entries[1].Tools[0].Input)
-	}
+	assert.Equal(t, "assistant", ps.Entries[1].Role)
+	assert.Len(t, ps.Entries[1].Texts, 2)
+	require.Len(t, ps.Entries[1].Tools, 1)
+	assert.Equal(t, "Bash", ps.Entries[1].Tools[0].Name)
+	assert.Equal(t, "rg -n compact .", ps.Entries[1].Tools[0].Input)
 
 	// Entry 2: user
-	if ps.Entries[2].Role != "user" || ps.Entries[2].Texts[0] != "thanks" {
-		t.Errorf("entry 2: role=%q text=%q", ps.Entries[2].Role, ps.Entries[2].Texts)
-	}
+	assert.Equal(t, "user", ps.Entries[2].Role)
+	require.NotEmpty(t, ps.Entries[2].Texts)
+	assert.Equal(t, "thanks", ps.Entries[2].Texts[0])
 
 	// Entry 3: assistant
-	if ps.Entries[3].Role != "assistant" || ps.Entries[3].Texts[0] != "You're welcome!" {
-		t.Errorf("entry 3: role=%q text=%q", ps.Entries[3].Role, ps.Entries[3].Texts)
-	}
+	assert.Equal(t, "assistant", ps.Entries[3].Role)
+	require.NotEmpty(t, ps.Entries[3].Texts)
+	assert.Equal(t, "You're welcome!", ps.Entries[3].Texts[0])
 }
 
 func TestParseCodexOld(t *testing.T) {
@@ -84,32 +62,20 @@ func TestParseCodexOld(t *testing.T) {
 `
 	ps := parseSessionFile(strings.NewReader(input), "/tmp/test.jsonl", "")
 
-	if ps.Format != FormatCodex {
-		t.Errorf("expected FormatCodex, got %d", ps.Format)
-	}
-	if ps.SessionID != "0094c5f9-8c02-4bf9-a22d-340f144ee5ee" {
-		t.Errorf("SessionID = %q", ps.SessionID)
-	}
+	assert.Equal(t, FormatCodex, ps.Format)
+	assert.Equal(t, "0094c5f9-8c02-4bf9-a22d-340f144ee5ee", ps.SessionID)
 
-	if len(ps.Entries) != 4 {
-		t.Fatalf("expected 4 entries, got %d", len(ps.Entries))
-	}
+	require.Len(t, ps.Entries, 4)
 
-	if ps.Entries[0].Role != "user" || ps.Entries[0].Texts[0] != "can you tell what this repo is" {
-		t.Errorf("entry 0: role=%q text=%q", ps.Entries[0].Role, ps.Entries[0].Texts)
-	}
-	if ps.Entries[1].Role != "assistant" {
-		t.Errorf("entry 1 role = %q, want assistant", ps.Entries[1].Role)
-	}
-	if len(ps.Entries[1].Tools) != 1 {
-		t.Errorf("entry 1 tools = %d, want 1", len(ps.Entries[1].Tools))
-	}
-	if ps.Entries[1].Tools[0].Name != "Bash" || ps.Entries[1].Tools[0].Input != "ls -1" {
-		t.Errorf("entry 1 tool: name=%q input=%q", ps.Entries[1].Tools[0].Name, ps.Entries[1].Tools[0].Input)
-	}
-	if ps.Entries[1].Texts[0] != "This is a Docker project." {
-		t.Errorf("entry 1 text = %q", ps.Entries[1].Texts[0])
-	}
+	assert.Equal(t, "user", ps.Entries[0].Role)
+	require.NotEmpty(t, ps.Entries[0].Texts)
+	assert.Equal(t, "can you tell what this repo is", ps.Entries[0].Texts[0])
+	assert.Equal(t, "assistant", ps.Entries[1].Role)
+	require.Len(t, ps.Entries[1].Tools, 1)
+	assert.Equal(t, "Bash", ps.Entries[1].Tools[0].Name)
+	assert.Equal(t, "ls -1", ps.Entries[1].Tools[0].Input)
+	require.NotEmpty(t, ps.Entries[1].Texts)
+	assert.Equal(t, "This is a Docker project.", ps.Entries[1].Texts[0])
 }
 
 func TestDetectFormat(t *testing.T) {
@@ -140,25 +106,19 @@ func TestDetectFormat(t *testing.T) {
 			lines = append(lines, []byte(l))
 		}
 		got := detectFormat(lines)
-		if got != tt.want {
-			t.Errorf("detectFormat(%s) = %d, want %d", tt.name, got, tt.want)
-		}
+		assert.Equal(t, tt.want, got, "detectFormat(%s)", tt.name)
 	}
 }
 
 func TestFormatCodexToolCall(t *testing.T) {
 	// exec_command
 	tc := formatCodexToolCall("exec_command", `{"cmd":"rg -n foo","workdir":"/tmp"}`)
-	if tc.Name != "Bash" || tc.Input != "rg -n foo" {
-		t.Errorf("exec_command: name=%q input=%q", tc.Name, tc.Input)
-	}
+	assert.Equal(t, "Bash", tc.Name)
+	assert.Equal(t, "rg -n foo", tc.Input)
 
 	// update_plan
 	tc = formatCodexToolCall("update_plan", `{"explanation":"doing stuff","plan":[{"step":"Step 1","status":"completed"},{"step":"Step 2","status":"in_progress"}]}`)
-	if tc.Name != "Plan" {
-		t.Errorf("update_plan: name=%q", tc.Name)
-	}
-	if !strings.Contains(tc.Plan, "[x] Step 1") || !strings.Contains(tc.Plan, "[~] Step 2") {
-		t.Errorf("update_plan: plan=%q", tc.Plan)
-	}
+	assert.Equal(t, "Plan", tc.Name)
+	assert.Contains(t, tc.Plan, "[x] Step 1")
+	assert.Contains(t, tc.Plan, "[~] Step 2")
 }

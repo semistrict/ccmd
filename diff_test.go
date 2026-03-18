@@ -4,29 +4,24 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtractChanges(t *testing.T) {
 	f, err := os.Open("testdata/session.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
 
 	ps := parseSessionFile(f, "testdata/session.jsonl", "")
 	changes := extractChanges(ps.Entries, 0)
 
-	if len(changes) == 0 {
-		t.Fatal("expected changes, got none")
-	}
+	require.NotEmpty(t, changes)
 
 	// First change should be a Write to files.go
-	if changes[0].op != "Write" {
-		t.Errorf("changes[0].op = %q, want Write", changes[0].op)
-	}
-	if changes[0].path != "src/ccmd/files.go" {
-		t.Errorf("changes[0].path = %q, want src/ccmd/files.go", changes[0].path)
-	}
+	assert.Equal(t, "Write", changes[0].op)
+	assert.Equal(t, "src/ccmd/files.go", changes[0].path)
 
 	// Should have Edit operations for claude.go
 	var hasClaudeEdit bool
@@ -36,37 +31,27 @@ func TestExtractChanges(t *testing.T) {
 			break
 		}
 	}
-	if !hasClaudeEdit {
-		t.Error("expected Edit for claude.go")
-	}
+	assert.True(t, hasClaudeEdit)
 }
 
 func TestExtractChangesLast(t *testing.T) {
 	f, err := os.Open("testdata/session.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
 
 	ps := parseSessionFile(f, "testdata/session.jsonl", "")
 
 	// -last 2 should have no changes (last 2 turns are user+assistant with no edits)
 	changes := extractChanges(ps.Entries, 2)
-	if len(changes) != 0 {
-		t.Errorf("expected 0 changes with -last 2, got %d", len(changes))
-	}
+	assert.Len(t, changes, 0)
 
 	// -last 5 should have some changes
 	changes = extractChanges(ps.Entries, 5)
-	if len(changes) == 0 {
-		t.Error("expected changes with -last 5, got none")
-	}
+	assert.NotEmpty(t, changes)
 
 	// All changes should be fewer than all changes
 	allChanges := extractChanges(ps.Entries, 0)
-	if len(changes) >= len(allChanges) {
-		t.Errorf("-last 5 changes (%d) should be fewer than all changes (%d)", len(changes), len(allChanges))
-	}
+	assert.Less(t, len(changes), len(allChanges))
 }
 
 func TestChangesFromToolsIncludesSubagent(t *testing.T) {
@@ -86,15 +71,11 @@ func TestChangesFromToolsIncludesSubagent(t *testing.T) {
 	}
 
 	changes := changesFromTools(tools)
-	if len(changes) != 2 {
-		t.Fatalf("changesFromTools len = %d, want 2", len(changes))
-	}
-	if changes[0].path != "a.go" || changes[0].op != "Edit" {
-		t.Fatalf("changes[0] = %+v", changes[0])
-	}
-	if changes[1].path != "b.go" || changes[1].op != "Write" {
-		t.Fatalf("changes[1] = %+v", changes[1])
-	}
+	require.Len(t, changes, 2)
+	assert.Equal(t, "a.go", changes[0].path)
+	assert.Equal(t, "Edit", changes[0].op)
+	assert.Equal(t, "b.go", changes[1].path)
+	assert.Equal(t, "Write", changes[1].op)
 }
 
 func TestPrintChange(t *testing.T) {
@@ -107,9 +88,7 @@ func TestPrintChange(t *testing.T) {
 		}, false)
 	})
 	for _, want := range []string{"--- /tmp/project/file.go (Edit)", "-old line", "+new line"} {
-		if !strings.Contains(editOut, want) {
-			t.Fatalf("edit output missing %q:\n%s", want, editOut)
-		}
+		assert.Contains(t, editOut, want)
 	}
 
 	var lines []string
@@ -123,7 +102,5 @@ func TestPrintChange(t *testing.T) {
 			newStr: strings.Join(lines, "\n"),
 		}, false)
 	})
-	if !strings.Contains(writeOut, "... (15 lines omitted)") {
-		t.Fatalf("write output should abbreviate long content:\n%s", writeOut)
-	}
+	assert.Contains(t, writeOut, "... (15 lines omitted)")
 }

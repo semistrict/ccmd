@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTruncate(t *testing.T) {
@@ -23,18 +26,14 @@ func TestTruncate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := truncate(tt.input, tt.n)
-		if got != tt.want {
-			t.Errorf("truncate(%q, %d) = %q, want %q", tt.input, tt.n, got, tt.want)
-		}
+		assert.Equal(t, tt.want, got, "truncate(%q, %d)", tt.input, tt.n)
 	}
 }
 
 func TestAbbreviateLines(t *testing.T) {
 	// Short input: no abbreviation
 	short := "line1\nline2\nline3"
-	if got := abbreviateLines(short, 5); got != short {
-		t.Errorf("abbreviateLines should not modify short input, got %q", got)
-	}
+	assert.Equal(t, short, abbreviateLines(short, 5))
 
 	// Long input: should abbreviate
 	var lines []string
@@ -43,15 +42,9 @@ func TestAbbreviateLines(t *testing.T) {
 	}
 	long := strings.Join(lines, "\n")
 	got := abbreviateLines(long, 3)
-	if !strings.Contains(got, "... (14 lines omitted)") {
-		t.Errorf("abbreviateLines should contain omission notice, got %q", got)
-	}
-	if !strings.HasPrefix(got, "line\n") {
-		t.Errorf("abbreviateLines should start with first line, got %q", got[:20])
-	}
-	if !strings.HasSuffix(got, "linexxxxxxxxxxxxxxxxxxx") {
-		t.Errorf("abbreviateLines should end with last line")
-	}
+	assert.Contains(t, got, "... (14 lines omitted)")
+	assert.True(t, strings.HasPrefix(got, "line\n"))
+	assert.True(t, strings.HasSuffix(got, "linexxxxxxxxxxxxxxxxxxx"))
 }
 
 func TestShortPath(t *testing.T) {
@@ -64,9 +57,7 @@ func TestShortPath(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := shortPath(tt.input)
-		if got != tt.want {
-			t.Errorf("shortPath(%q) = %q, want %q", tt.input, got, tt.want)
-		}
+		assert.Equal(t, tt.want, got, "shortPath(%q)", tt.input)
 	}
 }
 
@@ -130,9 +121,7 @@ func TestWriteMarkdownIncludesMetadataAndNestedContent(t *testing.T) {
 		"> sub prompt",
 		"> sub answer",
 	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("markdown missing %q:\n%s", want, out)
-		}
+		assert.Contains(t, out, want)
 	}
 }
 
@@ -149,19 +138,14 @@ func TestWriteEntriesSummaryHonorsRange(t *testing.T) {
 	writeEntries(&buf, entries, false, true, 2, 3, 0)
 	out := buf.String()
 
-	if !strings.Contains(out, "     system note\n") {
-		t.Fatalf("summary should include system entries:\n%s", out)
-	}
-	if strings.Contains(out, "first prompt") || strings.Contains(out, "fourth answer") {
-		t.Fatalf("summary should honor range filtering:\n%s", out)
-	}
+	assert.Contains(t, out, "     system note\n")
+	assert.NotContains(t, out, "first prompt")
+	assert.NotContains(t, out, "fourth answer")
 	for _, want := range []string{
 		"  2  **Claude:** second answer (1 tools)",
 		"  3  **User:** third prompt",
 	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("summary missing %q:\n%s", want, out)
-		}
+		assert.Contains(t, out, want)
 	}
 }
 
@@ -171,9 +155,7 @@ func TestRenderSessionToString(t *testing.T) {
 	input := `{"type":"user","timestamp":"2025-01-01T00:00:00Z","cwd":"/tmp/project","message":{"role":"user","content":"hello"}}
 {"type":"assistant","timestamp":"2025-01-01T00:00:01Z","message":{"role":"assistant","id":"msg1","content":[{"type":"text","text":"hi there"}]}}
 `
-	if err := os.WriteFile(path, []byte(input), 0644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(input), 0644))
 
 	out := renderSessionToString(path)
 	for _, want := range []string{
@@ -184,14 +166,10 @@ func TestRenderSessionToString(t *testing.T) {
 		"## [2] Claude",
 		"hi there",
 	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("renderSessionToString missing %q:\n%s", want, out)
-		}
+		assert.Contains(t, out, want)
 	}
 }
 
 func TestRenderSessionToStringMissingFile(t *testing.T) {
-	if got := renderSessionToString("/no/such/file.jsonl"); got != "" {
-		t.Fatalf("renderSessionToString missing file = %q, want empty string", got)
-	}
+	assert.Empty(t, renderSessionToString("/no/such/file.jsonl"))
 }

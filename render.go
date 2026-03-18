@@ -324,14 +324,19 @@ func listSessions(n int, projectFilter string) {
 		return
 	}
 
-	fmt.Printf(" %3s  %-12s  %5s  %-30s  %s\n", "#", "Date", "Turns", "Project", "Preview")
-	fmt.Printf(" %3s  %-12s  %5s  %-30s  %s\n", "---", "------------", "-----", "------------------------------", strings.Repeat("-", 40))
+	fmt.Printf(" %3s  %-12s  %5s  %-6s  %-30s  %s\n", "#", "Date", "Turns", "Agent", "Project", "Preview")
+	fmt.Printf(" %3s  %-12s  %5s  %-6s  %-30s  %s\n", "---", "------------", "-----", "------", "------------------------------", strings.Repeat("-", 40))
 	for i, s := range sessions {
 		preview := strings.ReplaceAll(s.Preview, "\n", " ")
-		fmt.Printf(" %3d  %-12s  %5d  %-30s  %s\n",
+		agent := "claude"
+		if s.Format == FormatCodex {
+			agent = "codex"
+		}
+		fmt.Printf(" %3d  %-12s  %5d  %-6s  %-30s  %s\n",
 			i+1,
 			s.Timestamp.Format("2006-01-02"),
 			s.Turns,
+			agent,
 			truncate(s.Project, 30),
 			truncate(preview, 80),
 		)

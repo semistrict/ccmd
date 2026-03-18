@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsUUID(t *testing.T) {
@@ -23,9 +26,7 @@ func TestIsUUID(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := isUUID(tt.input)
-		if got != tt.want {
-			t.Errorf("isUUID(%q) = %v, want %v", tt.input, got, tt.want)
-		}
+		assert.Equal(t, tt.want, got, "isUUID(%q)", tt.input)
 	}
 }
 
@@ -41,20 +42,14 @@ func TestExtractProjectName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := extractProjectName(tt.input)
-		if got != tt.want {
-			t.Errorf("extractProjectName(%q) = %q, want %q", tt.input, got, tt.want)
-		}
+		assert.Equal(t, tt.want, got, "extractProjectName(%q)", tt.input)
 	}
 }
 
 func TestCwdProjectDir(t *testing.T) {
 	got := cwdProjectDir()
-	if got == "" {
-		t.Error("cwdProjectDir() should not return empty string")
-	}
-	if got[0] != '-' {
-		t.Errorf("cwdProjectDir() should start with '-', got %q", got)
-	}
+	require.NotEmpty(t, got)
+	assert.Equal(t, byte('-'), got[0])
 }
 
 func TestScanSessionInfoSkipsToolOnlySidechainAndDuplicateAssistant(t *testing.T) {
@@ -70,24 +65,12 @@ func TestScanSessionInfoSkipsToolOnlySidechainAndDuplicateAssistant(t *testing.T
 
 	modTime := time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC)
 	info := scanSessionInfo(path, "-Users-ramon-src-demo", modTime)
-	if info == nil {
-		t.Fatal("scanSessionInfo returned nil")
-	}
-	if info.Project != "demo" {
-		t.Fatalf("Project = %q, want demo", info.Project)
-	}
-	if info.CWD != "/tmp/project" {
-		t.Fatalf("CWD = %q, want /tmp/project", info.CWD)
-	}
-	if info.Preview != "hello world" {
-		t.Fatalf("Preview = %q, want hello world", info.Preview)
-	}
-	if info.Turns != 2 {
-		t.Fatalf("Turns = %d, want 2", info.Turns)
-	}
-	if !info.Timestamp.Equal(modTime) {
-		t.Fatalf("Timestamp = %v, want %v", info.Timestamp, modTime)
-	}
+	require.NotNil(t, info)
+	assert.Equal(t, "demo", info.Project)
+	assert.Equal(t, "/tmp/project", info.CWD)
+	assert.Equal(t, "hello world", info.Preview)
+	assert.Equal(t, 2, info.Turns)
+	assert.True(t, info.Timestamp.Equal(modTime))
 }
 
 func TestFindCodexSessionByUUID(t *testing.T) {
@@ -97,9 +80,7 @@ func TestFindCodexSessionByUUID(t *testing.T) {
 	writeCodexSessionFile(t, path, "/tmp/project", uuid, "hello", "hi")
 
 	got := findCodexSessionByUUID(root, uuid)
-	if got != path {
-		t.Fatalf("findCodexSessionByUUID = %q, want %q", got, path)
-	}
+	assert.Equal(t, path, got)
 }
 
 func TestFindSessionByUUIDPrefersClaudeThenFallsBackToCodex(t *testing.T) {
@@ -112,16 +93,10 @@ func TestFindSessionByUUIDPrefersClaudeThenFallsBackToCodex(t *testing.T) {
 	writeClaudeSessionFile(t, claudePath, "/tmp/project", "hello", "msg1", "hi")
 	writeCodexSessionFile(t, codexPath, "/tmp/project", uuid, "hello", "hi")
 
-	if got := findSessionByUUID(uuid); got != claudePath {
-		t.Fatalf("findSessionByUUID Claude preference = %q, want %q", got, claudePath)
-	}
+	assert.Equal(t, claudePath, findSessionByUUID(uuid))
 
-	if err := os.Remove(claudePath); err != nil {
-		t.Fatal(err)
-	}
-	if got := findSessionByUUID(uuid); got != codexPath {
-		t.Fatalf("findSessionByUUID Codex fallback = %q, want %q", got, codexPath)
-	}
+	require.NoError(t, os.Remove(claudePath))
+	assert.Equal(t, codexPath, findSessionByUUID(uuid))
 }
 
 func TestFindSessionsFiltersSortsAndLimits(t *testing.T) {
@@ -129,9 +104,7 @@ func TestFindSessionsFiltersSortsAndLimits(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	projectDir := filepath.Join(home, "work", "match")
-	if err := os.MkdirAll(projectDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
 	chdirForTest(t, projectDir)
 	projectFilter := strings.ReplaceAll(projectDir, "/", "-")
 
@@ -145,18 +118,11 @@ func TestFindSessionsFiltersSortsAndLimits(t *testing.T) {
 	setTestModTime(t, otherCodexPath, time.Date(2026, 3, 13, 11, 0, 0, 0, time.UTC))
 
 	sessions := findSessions(0, projectFilter)
-	if len(sessions) != 1 {
-		t.Fatalf("findSessions filtered len = %d, want 1", len(sessions))
-	}
-	if sessions[0].Path != matchingCodexPath || sessions[0].Format != FormatCodex {
-		t.Fatalf("first session = %+v, want matching codex %q", sessions[0], matchingCodexPath)
-	}
+	require.Len(t, sessions, 1)
+	assert.Equal(t, matchingCodexPath, sessions[0].Path)
+	assert.Equal(t, FormatCodex, sessions[0].Format)
 
 	limited := findSessions(1, "")
-	if len(limited) != 1 {
-		t.Fatalf("limited sessions len = %d, want 1", len(limited))
-	}
-	if limited[0].Path != otherCodexPath {
-		t.Fatalf("limited[0].Path = %q, want newest %q", limited[0].Path, otherCodexPath)
-	}
+	require.Len(t, limited, 1)
+	assert.Equal(t, otherCodexPath, limited[0].Path)
 }
